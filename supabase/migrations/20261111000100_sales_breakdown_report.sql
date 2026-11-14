@@ -1,0 +1,120 @@
+-- Bắt buộc UTF8: push từ terminal Windows (WIN1252) làm hỏng tiếng Việt trong hàm/dữ liệu.
+set client_encoding = 'UTF8';
+
+-- =============================================================================
+-- Thống kê bán hàng theo món / danh mục / tùy chọn (size, sốt, topping...).
+--
+-- Cùng quy tắc với get_financial_report (phần giá vốn):
+--   đơn: completed, partially_refunded
+--   dòng món: bỏ kitchen_cancelled, refunded
+-- Số liệu lấy từ snapshot trên hóa đơn → món đã đổi tên / ngừng bán vẫn
+-- thống kê đúng như lúc bán.
+-- =============================================================================
+
+create or replace function public.get_sales_breakdown(
+  p_branch_id bigint,
+  p_from      timestamptz default null,
+  p_to        timestamptz default null
+) returns jsonb
+language plpgsql stable security definer set search_path = '' as $$
+declare
+  v_from timestamptz := coalesce(p_from, '-infinity'::timestamptz);
+  v_to   timestamptz := coalesce(p_to, 'infinity'::timestamptz);
+  v_result jsonb;
+begin
+  perform app.assert_branch_access(p_branch_id);
+  perform app.assert_role(array[
+    'owner'::app.user_role,
+    'manager'::app.user_role,
+    'superadmin'::app.user_role
+  ]);
+  perform app.assert_service(p_branch_id, 'pos_fb');
+
+  with lines as (
+    select i.id, i.order_id, i.product_id, i.quantity,
+           i.product_name_snapshot as product_name,
+           i.unit_price_snapshot   as unit_price,
+           i.cost_snapshot         as unit_cost,
+           coalesce(nullif(btrim(p.category), ''), 'Khác') as category
+    from public.sales_order_items i
+    join public.sales_orders o on o.id = i.order_id
+    left join public.products p on p.id = i.product_id
+    where o.branch_id = p_branch_id
+      and o.date between v_from and v_to
+      and o.status in ('completed', 'partially_refunded')
+      and i.status not in ('kitchen_cancelled', 'refunded')
+  ),
+  opts as (
+    select l.product_name, l.quantity,
+           so.group_name_snapshot  as group_name,
+           so.option_name_snapshot as option_name,
+           so.price_delta_snapshot as price_delta
+    from lines l
+    join public.sales_order_item_options so on so.order_item_id = l.id
+  )
+  select jsonb_build_object(
+    'from', nullif(v_from, '-infinity'::timestamptz),
+    'to',   nullif(v_to, 'infinity'::timestamptz),
+    'totals', (
+      select jsonb_build_object(
+        'orders',   count(distinct order_id),
+        'quantity', coalesce(sum(quantity), 0),
+        'revenue',  coalesce(sum(quantity * unit_price), 0),
+        'cost',     coalesce(sum(quantity * unit_cost), 0)
+      ) from lines
+    ),
+    'products', coalesce((
+      select jsonb_agg(t order by t.quantity desc, t.revenue desc)
+      from (
+        select product_name, category,
+               sum(quantity)::bigint              as quantity,
+               sum(quantity * unit_price)::bigint as revenue,
+               sum(quantity * unit_cost)::bigint  as cost,
+               count(distinct order_id)::bigint   as orders
+        from lines
+        group by product_name, category
+      ) t
+    ), '[]'::jsonb),
+    'categories', coalesce((
+      select jsonb_agg(t order by t.revenue desc)
+      from (
+        select category,
+               sum(quantity)::bigint              as quantity,
+               sum(quantity * unit_price)::bigint as revenue
+        from lines
+        group by category
+      ) t
+    ), '[]'::jsonb),
+    -- Tùy chọn gộp trên mọi món (VD "Sốt kem mayo" bán bao nhiêu phần tất cả)
+    'options', coalesce((
+      select jsonb_agg(t order by t.group_name, t.quantity desc)
+      from (
+        select group_name, option_name,
+               sum(quantity)::bigint               as quantity,
+               sum(quantity * price_delta)::bigint as extra_revenue
+        from opts
+        group by group_name, option_name
+      ) t
+    ), '[]'::jsonb),
+    -- Tùy chọn theo từng món (VD Gà viên: size L bao nhiêu, sốt nào bao nhiêu)
+    'product_options', coalesce((
+      select jsonb_agg(t order by t.product_name, t.group_name, t.quantity desc)
+      from (
+        select product_name, group_name, option_name,
+               sum(quantity)::bigint               as quantity,
+               sum(quantity * price_delta)::bigint as extra_revenue
+        from opts
+        group by product_name, group_name, option_name
+      ) t
+    ), '[]'::jsonb)
+  ) into v_result;
+
+  return v_result;
+end;
+$$;
+
+revoke all on function public.get_sales_breakdown(bigint, timestamptz, timestamptz) from public, anon;
+grant execute on function public.get_sales_breakdown(bigint, timestamptz, timestamptz) to authenticated;
+
+comment on function public.get_sales_breakdown(bigint, timestamptz, timestamptz) is
+  'Báo cáo bán hàng: theo món, danh mục, tùy chọn (size/sốt/topping) và tùy chọn theo từng món.';

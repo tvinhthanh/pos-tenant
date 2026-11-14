@@ -1,0 +1,16 @@
+services:
+  web:
+    build:
+      context: ./web
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:?NEXT_PUBLIC_SUPABASE_URL is required}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?NEXT_PUBLIC_SUPABASE_ANON_KEY is required}
+        NEXT_PUBLIC_INTERNAL_EMAIL_DOMAIN: ${NEXT_PUBLIC_INTERNAL_EMAIL_DOMAIN:-pos.local}
+    container_name: cms-pos-supabase-web
+    environment:
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:?NEXT_PUBLIC_SUPABASE_URL is required}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?NEXT_PUBLIC_SUPABASE_ANON_KEY is required}
+      NEXT_PUBLIC_INTERNAL_EMAIL_DOMAIN: ${NEXT_PUBLIC_INTERNAL_EMAIL_DOMAIN:-pos.local}
+    ports:
+      - "3001:3000"
+    restart: unless-stopped

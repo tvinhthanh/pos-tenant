@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  database:
+    name: Database (migrations + pgTAP)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.84.2
+
+      # Khởi động Postgres local và áp toàn bộ migration từ đầu: bắt lỗi
+      # migration không chạy được trên DB sạch.
+      - name: Start database
+        run: supabase db start
+
+      - name: Run pgTAP tests
+        run: supabase test db
+
+      - name: Lint SQL
+        run: supabase db lint --schema public,app --level error
+
+  web:
+    name: Web (types, lint, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # Lock file được tạo bằng npm 11; npm 10 (mặc định của Node 22) đọc lệch
+      # các optional dep (@emnapi/*) và làm `npm ci` báo lock file không khớp.
+      - run: npm install -g npm@11.6.1
+
+      - run: npm ci
+
+      - name: Type-check
+        run: npx tsc --noEmit -p .
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+        env:
+          # Build chỉ cần biến có mặt; không gọi tới Supabase thật
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder

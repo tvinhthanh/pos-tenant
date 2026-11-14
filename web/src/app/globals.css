@@ -1,0 +1,178 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Light Mode Variables */
+  --background: #f8fafc;
+  --foreground: #090d16;
+  
+  --slate-950: 248 250 252;
+  --slate-900: 255 255 255;
+  --slate-850: 241 245 249;
+  --slate-800: 226 232 240;
+  --slate-700: 203 213 225;
+  --slate-600: 148 163 184;
+  --slate-500: 100 116 139;
+  --slate-400: 71 85 105;
+  --slate-300: 51 65 85;
+  --slate-200: 30 41 59;
+  --slate-100: 15 23 42;
+  /* mức trung gian (app có dùng slate-250/350/450/650/750) */
+  --slate-250: 40 53 72;
+  --slate-350: 61 75 95;
+  --slate-450: 86 101 122;
+  --slate-650: 176 188 203;
+  --slate-750: 214 222 232;
+  
+  --glass-panel-bg: rgba(255, 255, 255, 0.75);
+  --glass-panel-border: rgba(15, 23, 42, 0.08);
+  --glass-card-bg: rgba(255, 255, 255, 0.6);
+  --glass-card-border: rgba(15, 23, 42, 0.06);
+  
+  --body-bg-radial: 
+    radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.04) 0px, transparent 50%),
+    radial-gradient(at 50% 0%, rgba(139, 92, 246, 0.03) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(16, 185, 129, 0.03) 0px, transparent 50%);
+}
+
+.dark {
+  /* Dark Mode Variables */
+  --background: #070913;
+  --foreground: #f8fafc;
+  
+  --slate-950: 7 9 19;
+  --slate-900: 10 15 29;
+  --slate-850: 18 25 44;
+  --slate-800: 30 41 59;
+  --slate-700: 51 65 85;
+  --slate-600: 71 85 105;
+  --slate-500: 100 116 139;
+  --slate-400: 148 163 184;
+  --slate-300: 203 213 225;
+  --slate-200: 226 232 240;
+  --slate-100: 248 250 252;
+  /* mức trung gian (app có dùng slate-250/350/450/650/750) */
+  --slate-250: 214 222 232;
+  --slate-350: 176 188 203;
+  --slate-450: 124 139 161;
+  --slate-650: 61 75 95;
+  --slate-750: 40 53 72;
+  
+  --glass-panel-bg: rgba(10, 15, 30, 0.75);
+  --glass-panel-border: rgba(255, 255, 255, 0.06);
+  --glass-card-bg: rgba(15, 22, 42, 0.45);
+  --glass-card-border: rgba(255, 255, 255, 0.04);
+  
+  --body-bg-radial: 
+    radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.08) 0px, transparent 50%),
+    radial-gradient(at 50% 0%, rgba(139, 92, 246, 0.05) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(16, 185, 129, 0.05) 0px, transparent 50%);
+}
+
+body {
+  color: var(--foreground);
+  background-color: var(--background);
+  background-image: var(--body-bg-radial);
+  background-attachment: fixed;
+  font-family: 'Outfit', sans-serif;
+  overflow-x: hidden;
+}
+
+/* Premium Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--slate-800));
+  border-radius: 9999px;
+  border: 2px solid var(--background);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--slate-500));
+}
+
+/* Glassmorphism Panel (Sidebar, Header, Modals) */
+.glass-panel {
+  background: var(--glass-panel-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-panel-border);
+}
+
+/* Glassmorphism Card with glowing gradient border on hover */
+.glass-card {
+  background: var(--glass-card-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-card-border);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.05);
+}
+
+.dark .glass-card {
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.4);
+}
+
+.glass-card:hover {
+  background: rgb(var(--slate-900));
+  border-color: rgba(99, 102, 241, 0.3);
+  transform: translateY(-4px);
+  box-shadow: 0 20px 40px -15px rgba(99, 102, 241, 0.15), 0 0 15px rgba(99, 102, 241, 0.05);
+}
+
+.dark .glass-card:hover {
+  background: rgba(20, 31, 58, 0.6);
+  box-shadow: 0 20px 40px -15px rgba(99, 102, 241, 0.25), 0 0 15px rgba(99, 102, 241, 0.1);
+}
+
+/* Custom glow utility */
+.glow-indigo {
+  box-shadow: 0 0 20px rgba(99, 102, 241, 0.15);
+}
+
+/* Force modern border-radius globally to replace standard retro sharp corners */
+.rounded-md {
+  border-radius: 12px !important; /* Override md to 12px (xl equivalent) */
+}
+.rounded-lg {
+  border-radius: 16px !important; /* Override lg to 16px (2xl equivalent) */
+}
+.rounded-xl {
+  border-radius: 14px !important;
+}
+.rounded-2xl {
+  border-radius: 20px !important;
+}
+
+/* Vibrant Buttons and Active Tabs styling */
+.active-tab-glow {
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+/* Input Fields styling overrides */
+input[type="text"], input[type="number"], input[type="password"], input[type="date"], select, textarea {
+  border-radius: 12px !important;
+  background-color: rgb(var(--slate-900)) !important;
+  border-color: rgb(var(--slate-800)) !important;
+  color: var(--foreground) !important;
+  transition: all 0.2s ease-in-out;
+}
+input[type="text"]:focus, input[type="number"]:focus, input[type="password"]:focus, input[type="date"]:focus, select:focus, textarea:focus {
+  border-color: rgba(99, 102, 241, 0.8) !important;
+  box-shadow: 0 0 10px rgba(99, 102, 241, 0.15) !important;
+}
+
+/* @media print for 80mm thermal receipt */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+}

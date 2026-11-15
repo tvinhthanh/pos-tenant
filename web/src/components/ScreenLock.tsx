@@ -47,6 +47,11 @@ export default function ScreenLock({ user, children }: { user: LockUser; childre
     setFirstPin("");
     const { data, error } = await supabase.rpc("my_pin_status");
     if (error) {
+      // Tài khoản đã bị xóa / bị khóa (app.require_user → 28000): đăng xuất.
+      if (error.code === "28000") {
+        await switchUser();
+        return;
+      }
       // DB chưa chạy migration user_pins (web deploy trước DB) → không khóa ai ngoài.
       if (error.code === "PGRST202") {
         setMode("unlocked");
@@ -68,7 +73,7 @@ export default function ScreenLock({ user, children }: { user: LockUser; childre
       setMessage("");
     }
     setMode(data?.has_pin ? "enter" : "create");
-  }, [user.id]);
+  }, [user.id, switchUser]);
 
   const lock = useCallback(() => {
     markLocked();
@@ -158,6 +163,10 @@ export default function ScreenLock({ user, children }: { user: LockUser; childre
           return;
         }
         const { error } = await supabase.rpc("set_my_pin", { p_pin: value });
+        if (error?.code === "28000") {
+          await switchUser();
+          return;
+        }
         if (error) {
           setMessage(isNetworkError(error) ? "Mất kết nối. Cần có mạng để tạo mã PIN." : error.message);
           setPin("");
@@ -174,6 +183,10 @@ export default function ScreenLock({ user, children }: { user: LockUser; childre
         : await supabase.rpc("verify_my_pin", { p_pin: value });
 
       if (error) {
+        if ((error as { code?: string }).code === "28000") {
+          await switchUser();
+          return;
+        }
         if (!isNetworkError(error) && !offline) {
           setPin("");
           // Chủ quán vừa xóa PIN (nhân viên quên PIN) → tạo PIN mới.

@@ -6,6 +6,7 @@
 -- default passwords. For local demo users, run supabase/seed.local.sql manually
 -- against a local database after migrations.
 -- =============================================================================
+set client_encoding = 'UTF8';
 
 do $$
 declare
@@ -38,14 +39,14 @@ begin
   returning id into v_plan_id;
 
   insert into public.organizations (name, plan_id, isolation_mode, is_active)
-  select 'Default Restaurant', v_plan_id, 'shared', true
+  select 'Quán mặc định', v_plan_id, 'shared', true
   where not exists (
-    select 1 from public.organizations where name = 'Default Restaurant'
+    select 1 from public.organizations where name in ('Quán mặc định', 'Default Restaurant')
   );
 
   select id into v_org_id
   from public.organizations
-  where name = 'Default Restaurant'
+  where name in ('Quán mặc định', 'Default Restaurant')
   order by id
   limit 1;
 
@@ -55,18 +56,18 @@ begin
    where id = v_org_id;
 
   insert into public.branches (organization_id, name, address, phone, is_active)
-  select v_org_id, 'Main Branch', null, null, true
+  select v_org_id, 'Chi nhánh chính', null, null, true
   where not exists (
     select 1
     from public.branches
     where organization_id = v_org_id
-      and name = 'Main Branch'
+      and name in ('Chi nhánh chính', 'Main Branch')
   );
 
   select id into v_branch_id
   from public.branches
   where organization_id = v_org_id
-    and name = 'Main Branch'
+    and name in ('Chi nhánh chính', 'Main Branch')
   order by id
   limit 1;
 
@@ -86,30 +87,31 @@ begin
     expires_at = excluded.expires_at;
 
   insert into public.areas (organization_id, branch_id, name)
-  select v_org_id, v_branch_id, 'Main Floor'
+  select v_org_id, v_branch_id, 'Khu chính'
   where not exists (
     select 1
     from public.areas
     where branch_id = v_branch_id
-      and name = 'Main Floor'
+      and name in ('Khu chính', 'Main Floor')
   );
 
   select id into v_area_id
   from public.areas
   where branch_id = v_branch_id
-    and name = 'Main Floor'
+    and name in ('Khu chính', 'Main Floor')
   order by id
   limit 1;
 
   insert into public.tables (organization_id, branch_id, area_id, name, is_active)
   select v_org_id, v_branch_id, v_area_id, table_name, true
-  from unnest(array['Table 1', 'Table 2', 'Table 3', 'Takeaway']) as table_name
+  from unnest(array['Bàn 1', 'Bàn 2', 'Bàn 3', 'Mang về']) as table_name
+  -- Chỉ tạo bàn mặc định khi khu chưa có bàn nào (DB cũ có thể đã có
+  -- 'Table 1'… hoặc bàn chủ quán tự đặt tên).
   where not exists (
     select 1
     from public.tables t
     where t.branch_id = v_branch_id
       and t.area_id = v_area_id
-      and lower(t.name) = lower(table_name)
   );
 
   insert into public.expense_categories (

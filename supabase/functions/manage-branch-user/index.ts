@@ -249,14 +249,14 @@ async function seedBranchDefaults(
 
   const { data: area, error: areaError } = await admin
     .from('areas')
-    .insert({ organization_id: organizationId, branch_id: branchId, name: 'Main Floor' })
+    .insert({ organization_id: organizationId, branch_id: branchId, name: 'Khu chính' })
     .select('id')
     .single()
   if (areaError || !area) return areaError?.message ?? 'Không tạo được khu vực mặc định.'
 
   const { error: tablesError } = await admin
     .from('tables')
-    .insert(['Table 1', 'Table 2', 'Table 3', 'Takeaway'].map((name) => ({
+    .insert(['Bàn 1', 'Bàn 2', 'Bàn 3', 'Mang về'].map((name) => ({
       organization_id: organizationId,
       branch_id: branchId,
       area_id: area.id,

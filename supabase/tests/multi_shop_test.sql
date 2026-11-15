@@ -8,7 +8,7 @@ begin;
 
 set search_path = public, extensions, app;
 
-select extensions.plan(28);
+select extensions.plan(29);
 
 -- ---------------------------------------------------------------------------
 -- Dữ liệu: tổ chức gói 4 shop, 3 tài khoản
@@ -200,6 +200,14 @@ reset role;
 select throws_ok(
   format($$update public.profiles set role = 'superadmin' where id = %L$$, (select staff_id from t_ctx)),
   '42501', null, 'profiles.role = superadmin bị chặn khi không có trong platform_admins');
+
+-- Token còn hạn của tài khoản đã bị xóa (không còn profile)
+select set_config('request.jwt.claims', jsonb_build_object(
+  'sub', gen_random_uuid(), 'role', 'authenticated')::text, true);
+set local role authenticated;
+select throws_ok($$select public.set_my_pin('1234')$$, '28000', null,
+                 'Tài khoản không còn hồ sơ: từ chối 28000 thay vì lỗi khóa ngoại user_pins');
+reset role;
 
 select * from extensions.finish();
 

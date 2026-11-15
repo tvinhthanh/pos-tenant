@@ -1,14 +1,14 @@
 -- =============================================================================
--- Seed bootstrap cho mo hinh 1 quan / 1 chi nhanh.
+-- Seed tài khoản demo cho DB LOCAL (owner / staff / superadmin, mật khẩu dev).
 --
--- Cach dung:
---   1. Chay migrations truoc.
---   2. Tao owner trong Supabase Auth.
---   3. Cap nhat bien o block "owner_user" bang UUID auth.users.id cua owner.
---   4. Chay file nay tren database dev/prod lan dau.
+-- Cách dùng:
+--   1. Chạy migrations trước (supabase db reset).
+--   2. docker exec -i supabase_db_<project> psql -U postgres < supabase/seed.local.sql
 --
--- File idempotent: co the chay lai de dam bao org/branch/subscription/default data.
+-- Chạy lại nhiều lần được: tìm tổ chức / chi nhánh theo tên (nhận cả tên cũ
+-- không dấu) rồi cập nhật về tên chuẩn. KHÔNG chạy trên production.
 -- =============================================================================
+set client_encoding = 'UTF8';
 
 do $$
 declare
@@ -44,37 +44,40 @@ begin
   returning id into v_plan_id;
 
   insert into public.organizations (name, plan_id, isolation_mode, is_active)
-  select 'Quan mac dinh', v_plan_id, 'shared', true
+  select 'Quán mặc định', v_plan_id, 'shared', true
   where not exists (
-    select 1 from public.organizations where name = 'Quan mac dinh'
+    select 1 from public.organizations where name in ('Quán mặc định', 'Quan mac dinh')
   );
 
   select id into v_org_id
   from public.organizations
-  where name = 'Quan mac dinh'
+  where name in ('Quán mặc định', 'Quan mac dinh')
   order by id
   limit 1;
 
   update public.organizations
      set plan_id = v_plan_id,
+         name = 'Quán mặc định',
          is_active = true
    where id = v_org_id;
 
   insert into public.branches (organization_id, name, address, phone, is_active)
-  select v_org_id, 'Chi nhanh chinh', null, null, true
+  select v_org_id, 'Chi nhánh chính', null, null, true
   where not exists (
     select 1
     from public.branches
     where organization_id = v_org_id
-      and name = 'Chi nhanh chinh'
+      and name in ('Chi nhánh chính', 'Chi nhanh chinh')
   );
 
   select id into v_branch_id
   from public.branches
   where organization_id = v_org_id
-    and name = 'Chi nhanh chinh'
+    and name in ('Chi nhánh chính', 'Chi nhanh chinh')
   order by id
   limit 1;
+
+  update public.branches set name = 'Chi nhánh chính' where id = v_branch_id;
 
   insert into public.subscriptions (
     organization_id, branch_id, service_code, status, plan, expires_at
@@ -91,32 +94,22 @@ begin
     plan = 'single_restaurant',
     expires_at = excluded.expires_at;
 
+  -- Dùng lại khu đã có của chi nhánh (seed.sql tạo "Khu chính" cho cùng chi
+  -- nhánh này); chỉ tạo khu + bàn mặc định khi chi nhánh chưa có gì.
   insert into public.areas (organization_id, branch_id, name)
-  select v_org_id, v_branch_id, 'Tầng 1'
-  where not exists (
-    select 1
-    from public.areas
-    where branch_id = v_branch_id
-      and name in ('Tầng 1', 'Tang 1')
-  );
+  select v_org_id, v_branch_id, 'Khu chính'
+  where not exists (select 1 from public.areas where branch_id = v_branch_id);
 
   select id into v_area_id
   from public.areas
   where branch_id = v_branch_id
-    and name in ('Tầng 1', 'Tang 1')
   order by id
   limit 1;
 
   insert into public.tables (organization_id, branch_id, area_id, name, is_active)
   select v_org_id, v_branch_id, v_area_id, table_name, true
   from unnest(array['Bàn 1', 'Bàn 2', 'Bàn 3', 'Mang về']) as table_name
-  where not exists (
-    select 1
-    from public.tables t
-    where t.branch_id = v_branch_id
-      and t.area_id = v_area_id
-      and lower(t.name) = lower(table_name)
-  );
+  where not exists (select 1 from public.tables t where t.branch_id = v_branch_id);
 
   insert into public.expense_categories (
     organization_id, branch_id, code, name, sub_categories
@@ -158,7 +151,7 @@ begin
     '00000000-0000-0000-0000-000000000000', v_owner_user_id, 'authenticated', 'authenticated', 'owner@pos.local',
     crypt('ownerpassword', gen_salt('bf')),
     now(), '{"provider":"email","providers":["email"]}'::jsonb,
-    jsonb_build_object('username', 'owner', 'full_name', 'Chu quan', 'role', 'owner'),
+    jsonb_build_object('username', 'owner', 'full_name', 'Chủ quán', 'role', 'owner'),
     now(), now()
   )
   on conflict (id) do update set
@@ -193,7 +186,7 @@ begin
     '00000000-0000-0000-0000-000000000000', v_staff_user_id, 'authenticated', 'authenticated', 'staff@pos.local',
     crypt('staffpassword', gen_salt('bf')),
     now(), '{"provider":"email","providers":["email"]}'::jsonb,
-    jsonb_build_object('username', 'staff', 'full_name', 'Nhan vien', 'role', 'staff'),
+    jsonb_build_object('username', 'staff', 'full_name', 'Nhân viên', 'role', 'staff'),
     now(), now()
   )
   on conflict (id) do update set
@@ -260,8 +253,8 @@ begin
   insert into public.profiles (
     id, username, full_name, is_active, role, organization_id, branch_id
   ) values
-    (v_owner_user_id, 'owner', 'Chu quan', true, 'owner', v_org_id, v_branch_id),
-    (v_staff_user_id, 'staff', 'Nhan vien', true, 'staff', v_org_id, v_branch_id),
+    (v_owner_user_id, 'owner', 'Chủ quán', true, 'owner', v_org_id, v_branch_id),
+    (v_staff_user_id, 'staff', 'Nhân viên', true, 'staff', v_org_id, v_branch_id),
     (v_superadmin_user_id, 'superadmin', 'SaaS Admin', true, 'superadmin', v_org_id, v_branch_id)
   on conflict (id) do update set
     username = excluded.username,

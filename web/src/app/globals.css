@@ -75,7 +75,8 @@ body {
   background-color: var(--background);
   background-image: var(--body-bg-radial);
   background-attachment: fixed;
-  font-family: 'Outfit', sans-serif;
+  /* Be Vietnam Pro: đủ glyph tiếng Việt (ể, ở, ẩ…); Outfit trước đây thiếu, dấu bị lệch. */
+  font-family: 'Be Vietnam Pro', system-ui, 'Segoe UI', Roboto, Arial, sans-serif;
   overflow-x: hidden;
 }
 

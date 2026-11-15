@@ -60,13 +60,30 @@ export interface PublicSite {
   published_at: string | null;
   custom_domain: string | null;
   nav: { path: string; title: string }[];
+  /** Có bài viết đã đăng (menu tự thêm "Tin tức") */
+  has_posts?: boolean;
   online: {
     accept_orders: boolean;
     accept_reservations: boolean;
     fulfillments: Fulfillment[];
     min_order_amount: number;
     notice: string | null;
+    /** Shop nhận chuyển khoản VietQR cho đơn đã xác nhận */
+    bank_transfer?: boolean;
   } | null;
+}
+
+export interface PublicPostSummary {
+  slug: string;
+  title: string;
+  excerpt: string | null;
+  cover_image: string | null;
+  published_at: string;
+}
+
+export interface PublicPost extends PublicPostSummary {
+  body: string;
+  updated_at: string;
 }
 
 export interface PublicPage {
@@ -137,6 +154,10 @@ export const FULFILLMENT_LABELS: Record<Fulfillment, string> = {
   pickup: "Đến lấy", dine_in: "Dùng tại quán", delivery: "Giao hàng",
 };
 export const DAY_LABELS = ["", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy", "Chủ nhật"];
+
+/** Ngày theo giờ Việt Nam: 15/11/2026 */
+export const fmtDateVN = (iso: string) =>
+  new Date(iso).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Asia/Ho_Chi_Minh" });
 
 export const vnd = (n: number | null | undefined) => `${Math.round(Number(n || 0)).toLocaleString("vi-VN")}đ`;
 

@@ -3,7 +3,7 @@
  * anon không đọc thẳng bảng nào (docs/website-design.md, W1).
  */
 import { headers } from "next/headers";
-import type { CatalogItem, PublicPage, PublicSite } from "@/utils/site";
+import type { CatalogItem, PublicPage, PublicPost, PublicPostSummary, PublicSite } from "@/utils/site";
 
 // Trong Docker, Next gọi Supabase qua mạng nội bộ (SUPABASE_INTERNAL_URL); ở máy dev dùng URL công khai.
 const SUPABASE_URL = process.env.SUPABASE_INTERNAL_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
@@ -38,7 +38,11 @@ export const getPage = (shop: string, path: string) => rpc<PublicPage>("get_publ
 export const getCatalog = async (shop: string) => (await rpc<CatalogItem[]>("get_public_catalog", { p_shop: shop }, 60)) ?? [];
 export const getSitemap = async (shop: string) =>
   (await rpc<{ path: string; updated_at: string }[]>("get_public_sitemap", { p_shop: shop }, 300)) ?? [];
-export const resolveDomain = (host: string) => rpc<string>("site_resolve_domain", { p_host: host }, 60);
+export const getPosts = async (shop: string, limit = 12, offset = 0) =>
+  (await rpc<{ total: number; items: PublicPostSummary[] }>("get_public_posts", { p_shop: shop, p_limit: limit, p_offset: offset }, 60))
+  ?? { total: 0, items: [] };
+export const getPost = (shop: string, slug: string) => rpc<PublicPost>("get_public_post", { p_shop: shop, p_slug: slug }, 60);
+export const resolveDomain =(host: string) => rpc<string>("site_resolve_domain", { p_host: host }, 60);
 
 /**
  * Tiền tố đường dẫn trong website: proxy đặt x-site-base = "" khi khách vào bằng

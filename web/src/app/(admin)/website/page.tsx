@@ -6,15 +6,16 @@ import { ExternalLink, FilePlus2, GripVertical, Trash2 } from "lucide-react";
 import { ErrorLine, Field, Modal, PageHead, inputCls } from "@/components/RetailUi";
 import PageEditor from "@/components/website/PageEditor";
 import { DomainPanel, InfoPanel, TemplateGrid, ThemePanel } from "@/components/website/Panels";
+import PostsPanel from "@/components/website/PostsPanel";
 import { errorText, toast } from "@/components/Toaster";
 import {
-  deletePage, getEditor, getOnlineSettings, initSite, previewCatalog, publishSite, reorderPages, savePage,
+  deletePage, getEditor, getOnlineSettings, getSiteStorage, initSite, previewCatalog, publishSite, reorderPages, savePage,
   type EditorData,
 } from "@/utils/website";
 import { slugify, type PublicSite, type SiteTheme } from "@/utils/site";
 
-type Tab = "pages" | "theme" | "info" | "domain";
-const TABS: [Tab, string][] = [["pages", "Trang"], ["theme", "Giao diện"], ["info", "Thông tin"], ["domain", "Địa chỉ web"]];
+type Tab = "pages" | "posts" | "theme" | "info" | "domain";
+const TABS: [Tab, string][] = [["pages", "Trang"], ["posts", "Tin tức"], ["theme", "Giao diện"], ["info", "Thông tin"], ["domain", "Địa chỉ web"]];
 const PLATFORM_DOMAIN = process.env.NEXT_PUBLIC_PLATFORM_DOMAIN || "";
 
 export default function WebsitePage() {
@@ -59,6 +60,7 @@ function Editor({ data, catalog, online, refresh }: {
   const [dirty, setDirty] = useState(false);
   const [adding, setAdding] = useState(false);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
+  const { data: storage } = useQuery({ queryKey: ["siteStorage"], queryFn: getSiteStorage, staleTime: 60_000 });
 
   const template = data.templates.find((t) => t.id === data.site!.template_id);
   const theme = useMemo(() => ({ ...(template?.theme as SiteTheme), ...data.site!.theme }) as SiteTheme, [template, data.site]);
@@ -176,10 +178,16 @@ function Editor({ data, catalog, online, refresh }: {
               <FilePlus2 className="h-4 w-4" /> Thêm trang
             </button>
             <p className="px-2 text-[11px] text-slate-500">{data.pages.length}/{data.limits.max_site_pages} trang theo gói</p>
+            {storage && (
+              <p className="px-2 text-[11px] text-slate-500" title="Ảnh tự thu nhỏ, nén trước khi tải lên">
+                Ảnh: {(storage.used_bytes / 1048576).toFixed(1)}/{Math.round(storage.limit_bytes / 1048576)} MB
+              </p>
+            )}
           </aside>
           <PageEditor page={page} site={previewSite} catalog={catalog} onSaved={refresh} onDirty={setDirty} />
         </div>
       )}
+      {tab === "posts" && <PostsPanel siteUrl={data.site!.is_published ? siteUrl : null} />}
       {tab === "theme" && <ThemePanel data={data} baseTheme={template!.theme} onSaved={refresh} />}
       {tab === "info" && <InfoPanel data={data} onSaved={refresh} />}
       {tab === "domain" && <DomainPanel data={data} onSaved={refresh} />}

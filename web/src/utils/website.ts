@@ -4,6 +4,7 @@
  */
 import { activeContext, supabase, toApiError } from "@/utils/api";
 import type { CatalogItem, Fulfillment, Integrations, OpeningHours, Section, SiteTheme } from "@/utils/site";
+import { resizeImage } from "@/utils/imageResize";
 
 async function call<T>(fn: string, args: Record<string, unknown>): Promise<T> {
   const { data, error } = await supabase.rpc(fn, args);
@@ -146,16 +147,70 @@ export async function previewCatalog(businessType: string): Promise<CatalogItem[
   return (data || []).map((p: any) => ({ ...p, available: true, sold_30d: 0 }));
 }
 
-/** Tải ảnh lên bucket sites: <org>/<branch>/<ngẫu nhiên>.<đuôi> */
-export async function uploadSiteImage(file: File): Promise<string> {
+export interface SiteStorage { used_bytes: number; limit_bytes: number }
+
+export async function getSiteStorage(): Promise<SiteStorage> {
+  const { branchId } = await activeContext();
+  return call<SiteStorage>("get_site_storage", { p_branch_id: branchId });
+}
+
+/**
+ * Tải ảnh lên bucket sites: <org>/<branch>/<ngẫu nhiên>.<đuôi>.
+ * Thu nhỏ / nén trên trình duyệt trước (cạnh dài ≤ maxSize), rồi mới kiểm 5 MB và dung lượng gói.
+ */
+export async function uploadSiteImage(original: File, maxSize = 1920): Promise<string> {
   const { branchId, organizationId } = await activeContext();
-  if (!/^image\/(jpeg|png|webp)$/.test(file.type)) throw new Error("Chỉ nhận ảnh JPG, PNG hoặc WebP.");
-  if (file.size > 5 * 1024 * 1024) throw new Error("Ảnh tối đa 5 MB.");
+  if (!/^image\/(jpeg|png|webp)$/.test(original.type)) throw new Error("Chỉ nhận ảnh JPG, PNG hoặc WebP.");
+  if (original.size > 25 * 1024 * 1024) throw new Error("Ảnh quá lớn (tối đa 25 MB trước khi nén).");
+  const file = await resizeImage(original, { maxSize });
+  if (file.size > 5 * 1024 * 1024) throw new Error("Ảnh sau khi nén vẫn trên 5 MB. Chọn ảnh nhỏ hơn.");
+  const storage = await getSiteStorage();
+  if (storage.used_bytes >= storage.limit_bytes) {
+    throw new Error(`Đã dùng hết ${Math.round(storage.limit_bytes / 1048576)} MB dung lượng ảnh của gói. Xóa bớt ảnh hoặc nâng gói.`);
+  }
   const ext = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
   const path = `${organizationId}/${branchId}/${crypto.randomUUID()}.${ext}`;
   const { error } = await supabase.storage.from("sites").upload(path, file, { contentType: file.type, upsert: false });
-  if (error) throw new Error(error.message);
+  if (error) {
+    throw new Error(/row-level security|unauthorized/i.test(error.message)
+      ? "Không tải được ảnh: hết dung lượng gói hoặc tài khoản không có quyền sửa website."
+      : error.message);
+  }
   return supabase.storage.from("sites").getPublicUrl(path).data.publicUrl;
+}
+
+// ---------------------------------------------------------------------------
+// Bài viết / tin tức
+// ---------------------------------------------------------------------------
+export interface SitePost {
+  id: number;
+  slug: string;
+  title: string;
+  excerpt: string | null;
+  cover_image: string | null;
+  body: string;
+  status: "draft" | "published";
+  published_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getPosts(): Promise<{ posts: SitePost[]; limits: { max_site_posts: number } }> {
+  const { branchId } = await activeContext();
+  return call("get_site_posts", { p_branch_id: branchId });
+}
+
+export async function savePost(post: {
+  id?: number; slug: string; title: string; excerpt?: string | null; cover_image?: string | null; body: string;
+  status: "draft" | "published"; published_at?: string | null;
+}) {
+  const { branchId } = await activeContext();
+  return call<{ id: number }>("save_site_post", { p_branch_id: branchId, p_payload: post });
+}
+
+export async function deletePost(id: number) {
+  const { branchId } = await activeContext();
+  return call("delete_site_post", { p_branch_id: branchId, p_post_id: id });
 }
 
 // ---------------------------------------------------------------------------
@@ -179,6 +234,9 @@ export interface OnlineRequest {
   converted_ref: number | null;
   reject_reason: string | null;
   created_at: string;
+  /** Nội dung chuyển khoản duy nhất của đơn (VietQR) */
+  transfer_code: string;
+  paid_at: string | null;
   payload: { display?: { name: string; quantity: number; unit_price: number }[]; lines?: { name: string; quantity: number; start: string; end: string; deposit: number }[] };
 }
 
@@ -202,6 +260,31 @@ export async function countPendingOnline(): Promise<number> {
 export const confirmOnline = (id: number) => call<{ converted_ref: number }>("confirm_online_request", { p_request_id: id });
 export const rejectOnline = (id: number, reason: string) => call("reject_online_request", { p_request_id: id, p_reason: reason });
 export const cancelOnlineOrder = (id: number, reason: string) => call("cancel_online_order", { p_request_id: id, p_reason: reason });
+
+/** Quản lý xác nhận đã nhận tiền chuyển khoản (ghi payments + sổ quỹ qua complete_draft_order; cần ca mở) */
+export const confirmOnlinePayment = (id: number, transferRef?: string) =>
+  call<{ order_id: number; amount: number }>("confirm_online_payment", { p_request_id: id, p_transfer_ref: transferRef || null });
+
+export interface PaymentSettings {
+  bank_transfer_enabled: boolean;
+  bank_bin: string | null;
+  bank_account_no: string | null;
+  bank_account_name: string | null;
+}
+
+export async function getPaymentSettings(): Promise<PaymentSettings | null> {
+  const { branchId } = await activeContext();
+  const { data, error } = await supabase.from("shop_payment_settings")
+    .select("bank_transfer_enabled, bank_bin, bank_account_no, bank_account_name").eq("branch_id", branchId).maybeSingle();
+  if (error) toApiError(error);
+  return data as PaymentSettings | null;
+}
+
+/** Chỉ chủ shop: đổi tài khoản nhận tiền */
+export async function savePaymentSettings(s: PaymentSettings) {
+  const { branchId } = await activeContext();
+  return call<PaymentSettings>("save_shop_payment_settings", { p_branch_id: branchId, p_payload: s });
+}
 
 export async function completeDraft(orderId: number, method: string, amount: number) {
   const { branchId } = await activeContext();

@@ -2,6 +2,8 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import PhoneLogin, { useCustomerSession } from "@/components/site/PhoneLogin";
+import RentalCalendar from "@/components/site/RentalCalendar";
+import TransferQR from "@/components/site/TransferQR";
 import { rpc } from "@/utils/customerAuth";
 import {
   href, vnd, FULFILLMENT_LABELS, RATE_UNIT_LABELS,
@@ -106,8 +108,9 @@ export default function OrderClient({ site, catalog, base }: { site: PublicSite;
         <h1 className="mt-2 text-3xl font-semibold">{auto ? "Shop đã nhận đơn của bạn" : "Đã gửi, chờ shop xác nhận"}</h1>
         <p className="mt-3 text-[var(--c-muted)]">
           {auto ? "Đơn đã được xác nhận tự động. " : "Shop sẽ xác nhận trong ít phút. "}
-          Tạm tính {vnd(result.quoted_total)}, thanh toán tại shop.
+          Tạm tính {vnd(result.quoted_total)}, thanh toán tại shop{!rental && online?.bank_transfer ? " hoặc chuyển khoản" : ""}.
         </p>
+        {!rental && online?.bank_transfer && <TransferQR requestId={result.id} />}
         <a href={href(base, "/tai-khoan")} className={`${primary} mt-8 inline-block`}>Theo dõi đơn</a>
       </div>
     );
@@ -169,6 +172,13 @@ export default function OrderClient({ site, catalog, base }: { site: PublicSite;
           <p className="flex justify-between border-t border-black/10 pt-3 font-semibold"><span>Tạm tính</span><span className="tabular-nums">{vnd(subtotal)}</span></p>
         )}
         {belowMin && <p className="text-sm text-amber-700">Đơn tối thiểu {vnd(online!.min_order_amount)}.</p>}
+        {rental && cart.length > 0 && (
+          <div className="space-y-1">
+            <h3 className="text-sm font-medium">Lịch trống</h3>
+            <RentalCalendar shop={site.shop} itemIds={cart.map((l) => l.id)} start={start} end={end}
+              onChange={(s, e) => { setStart(s); setEnd(e); }} />
+          </div>
+        )}
 
         {session === undefined ? null : !session ? (
           <PhoneLogin title="Đăng nhập để gửi đơn" />
@@ -211,7 +221,9 @@ export default function OrderClient({ site, catalog, base }: { site: PublicSite;
             <button onClick={submit} disabled={busy || cart.length === 0 || !name.trim() || Boolean(belowMin)} className={`${primary} w-full`}>
               {busy ? "Đang gửi…" : rental ? "Gửi yêu cầu đặt lịch" : "Gửi đơn"}
             </button>
-            <p className="text-xs text-[var(--c-muted)]">Thanh toán tại shop khi nhận{rental ? " (kèm tiền cọc)" : ""}. Giá cuối cùng do shop xác nhận.</p>
+            <p className="text-xs text-[var(--c-muted)]">
+              Thanh toán tại shop khi nhận{rental ? " (kèm tiền cọc)" : online?.bank_transfer ? " hoặc chuyển khoản VietQR sau khi shop xác nhận" : ""}. Giá cuối cùng do shop xác nhận.
+            </p>
           </div>
         )}
       </aside>

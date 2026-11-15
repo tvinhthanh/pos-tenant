@@ -3,15 +3,17 @@
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Clock, Phone, Settings2 } from "lucide-react";
+import { Clock, Landmark, Phone, Search, Settings2 } from "lucide-react";
 import api, { supabase } from "@/utils/api";
 import { ErrorLine, Field, Modal, NumberInput, PageHead, inputCls } from "@/components/RetailUi";
 import { errorText, toast } from "@/components/Toaster";
 import {
-  cancelOnlineOrder, completeDraft, confirmOnline, draftStatus, getOnlineSettings, listOnlineRequests, rejectOnline,
-  saveOnlineSettings, type OnlineRequest, type OnlineSettings,
+  cancelOnlineOrder, completeDraft, confirmOnline, confirmOnlinePayment, draftStatus, getOnlineSettings,
+  getPaymentSettings, listOnlineRequests, rejectOnline, saveOnlineSettings, savePaymentSettings,
+  type OnlineRequest, type OnlineSettings, type PaymentSettings,
 } from "@/utils/website";
 import { FULFILLMENT_LABELS, vnd, type Fulfillment } from "@/utils/site";
+import { VN_BANKS, bankName, findTransferCodes, toAccountName } from "@/utils/vietqr";
 
 const STATUS: Record<string, { label: string; tone: string }> = {
   pending: { label: "Chờ xác nhận", tone: "bg-amber-500/10 text-amber-600" },
@@ -27,11 +29,15 @@ export default function OnlinePage() {
   const qc = useQueryClient();
   const [scope, setScope] = useState<"open" | "all">("open");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [bankOpen, setBankOpen] = useState(false);
+  // Đối soát: dán nội dung CK / tin báo ngân hàng → lọc đơn có mã khớp
+  const [reconcile, setReconcile] = useState("");
   // "Bây giờ" cập nhật mỗi 30 giây: đếm ngược hết hạn, lọc đơn trong ngày
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(t); }, []);
   const { data: me } = useQuery({ queryKey: ["currentUser"], queryFn: async () => (await api.get("/api/v1/auth/me")).data });
   const isManager = me?.role === "owner" || me?.role === "manager" || me?.role === "superadmin";
+  const isOwner = me?.role === "owner" || me?.role === "superadmin";
   const businessType: string = me?.business_type ?? "fnb";
 
   const { data: list = [], isLoading, error } = useQuery({
@@ -60,14 +66,22 @@ export default function OnlinePage() {
   };
 
   // Đơn "đang mở": còn chờ, hoặc đã xác nhận nhưng chưa thu tiền / chưa hủy
-  const shown = scope === "open"
+  const codes = findTransferCodes(reconcile);
+  const shown = codes.length > 0
+    ? list.filter((r) => codes.includes(r.transfer_code))
+    : scope === "open"
     ? list.filter((r) => r.status === "pending" || (r.converted_kind === "sales_order" && drafts[r.converted_ref!]?.status === "draft")
         || (r.converted_kind === "rental_contract" && ["confirmed", "auto_confirmed"].includes(r.status) && new Date(r.created_at).getTime() > now - 86400e3))
     : list;
 
   return (
     <div className="space-y-6">
-      <PageHead title="Đơn online" sub="Đơn khách đặt từ website. Xác nhận đơn món / hàng → thành đơn nháp đã giữ hàng; khách trả tiền tại quầy.">
+      <PageHead title="Đơn online" sub="Đơn khách đặt từ website. Xác nhận đơn món / hàng → thành đơn nháp đã giữ hàng; khách trả tại quầy hoặc chuyển khoản VietQR.">
+        {isOwner && (
+          <button onClick={() => setBankOpen(true)} className="flex items-center gap-1.5 rounded-xl border border-slate-800 px-3 py-2 text-xs text-slate-300 hover:bg-slate-900">
+            <Landmark className="h-4 w-4" /> Tài khoản nhận tiền
+          </button>
+        )}
         {isManager && (
           <button onClick={() => setSettingsOpen(true)} className="flex items-center gap-1.5 rounded-xl border border-slate-800 px-3 py-2 text-xs text-slate-300 hover:bg-slate-900">
             <Settings2 className="h-4 w-4" /> Cài đặt nhận đơn
@@ -82,7 +96,21 @@ export default function OnlinePage() {
             {label}
           </button>
         ))}
+        <label className="relative ml-auto w-full max-w-sm">
+          <span className="sr-only">Đối soát chuyển khoản</span>
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" aria-hidden="true" />
+          <input value={reconcile} onChange={(e) => setReconcile(e.target.value)}
+            placeholder="Đối soát: dán nội dung CK / tin báo ngân hàng"
+            className={`${inputCls} pl-9 text-xs`} />
+        </label>
       </div>
+      {reconcile.trim() && (
+        <p className="text-xs text-slate-400">
+          {codes.length === 0 ? "Không thấy mã đơn (dạng OL000123ABCD) trong nội dung vừa dán."
+            : shown.length === 0 ? `Mã ${codes.join(", ")} không khớp đơn nào trong 100 đơn gần nhất.`
+            : `Khớp ${shown.length} đơn theo mã ${codes.join(", ")}. Kiểm số tiền rồi bấm "Đã nhận CK".`}
+        </p>
+      )}
 
       {error && <ErrorLine text={errorText(error, "Không tải được đơn online.")} />}
       {isLoading && <p className="text-sm text-slate-500">Đang tải…</p>}
@@ -99,6 +127,7 @@ export default function OnlinePage() {
       </div>
 
       {settingsOpen && <SettingsDialog businessType={businessType} onClose={() => setSettingsOpen(false)} />}
+      {bankOpen && <BankDialog onClose={() => setBankOpen(false)} />}
     </div>
   );
 }
@@ -106,7 +135,7 @@ export default function OnlinePage() {
 function RequestCard({ r, now, draft, isManager, onDone }: {
   r: OnlineRequest; now: number; draft?: { status: string; final_amount: number }; isManager: boolean; onDone: () => void;
 }) {
-  const [dialog, setDialog] = useState<null | "reject" | "pay" | "cancel">(null);
+  const [dialog, setDialog] = useState<null | "reject" | "pay" | "cancel" | "transfer">(null);
   const s = STATUS[r.status];
   const minsLeft = Math.round((new Date(r.expires_at).getTime() - now) / 60000);
   const confirm = useMutation({
@@ -137,6 +166,10 @@ function RequestCard({ r, now, draft, isManager, onDone }: {
         {r.kind === "order" && <span>{FULFILLMENT_LABELS[r.fulfillment]}</span>}
         {r.requested_for && r.kind === "order" && <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" />Hẹn {fmt(r.requested_for)}</span>}
         {r.status === "pending" && <span className={minsLeft < 5 ? "text-rose-500" : ""}>Tự hết hạn sau {Math.max(minsLeft, 0)} phút</span>}
+        {r.kind === "order" && r.transfer_code && (
+          <span title="Nội dung chuyển khoản của đơn">CK: <span className="font-mono text-slate-300">{r.transfer_code}</span>
+            {r.paid_at && <span className="ml-1 text-emerald-500">· đã nhận {fmt(r.paid_at)}</span>}</span>
+        )}
       </div>
       {r.note && <p className="rounded-lg bg-slate-950 p-2 text-sm text-slate-300">“{r.note}”</p>}
       {r.reject_reason && r.status !== "pending" && <p className="text-xs text-rose-500">Lý do: {r.reject_reason}</p>}
@@ -154,6 +187,9 @@ function RequestCard({ r, now, draft, isManager, onDone }: {
         {r.converted_kind === "sales_order" && draft?.status === "draft" && (
           <>
             <button onClick={() => setDialog("pay")} className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">Thu tiền {vnd(draft.final_amount)}</button>
+            {isManager && (
+              <button onClick={() => setDialog("transfer")} className="rounded-xl border border-indigo-500/50 px-4 py-2 text-sm text-indigo-500 hover:bg-indigo-500/10">Đã nhận CK</button>
+            )}
             {isManager && <button onClick={() => setDialog("cancel")} className="rounded-xl px-3 py-2 text-sm text-rose-500 hover:bg-rose-500/10">Khách không đến</button>}
           </>
         )}
@@ -167,6 +203,7 @@ function RequestCard({ r, now, draft, isManager, onDone }: {
       {dialog === "cancel" && <ReasonDialog title={`Hủy ${r.code}`} hint="Hàng đã giữ được trả lại kho." action="Hủy đơn"
         onClose={() => setDialog(null)} run={(reason) => cancelOnlineOrder(r.id, reason)} onDone={onDone} />}
       {dialog === "pay" && draft && <PayDialog r={r} amount={draft.final_amount} onClose={() => setDialog(null)} onDone={onDone} />}
+      {dialog === "transfer" && draft && <TransferDialog r={r} amount={draft.final_amount} onClose={() => setDialog(null)} onDone={onDone} />}
     </article>
   );
 }
@@ -214,6 +251,99 @@ function PayDialog({ r, amount, onClose, onDone }: { r: OnlineRequest; amount: n
         <button onClick={onClose} className="rounded-xl border border-slate-800 px-4 py-2 text-sm text-slate-300">Đóng</button>
         <button onClick={() => m.mutate()} disabled={m.isPending} className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50">Đã thu</button>
       </div>
+    </Modal>
+  );
+}
+
+// Quản lý đối chiếu sao kê / app ngân hàng rồi xác nhận — không có API ngân hàng
+function TransferDialog({ r, amount, onClose, onDone }: { r: OnlineRequest; amount: number; onClose: () => void; onDone: () => void }) {
+  const [ref, setRef] = useState("");
+  const [err, setErr] = useState("");
+  const m = useMutation({
+    mutationFn: () => confirmOnlinePayment(r.id, ref.trim()),
+    onSuccess: () => { toast.success(`Đã ghi nhận ${vnd(amount)} chuyển khoản`); onDone(); onClose(); },
+    onError: (e) => setErr(errorText(e, "Không ghi nhận được.")),
+  });
+  return (
+    <Modal title={`Đã nhận chuyển khoản ${r.code}`} onClose={onClose}>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+        <dt className="text-slate-400">Số tiền</dt><dd className="text-xl font-bold tabular-nums text-slate-100">{vnd(amount)}</dd>
+        <dt className="text-slate-400">Nội dung CK</dt><dd className="font-mono text-slate-100">{r.transfer_code}</dd>
+        <dt className="text-slate-400">Khách</dt><dd className="text-slate-300">{r.contact_name} · {r.contact_phone}</dd>
+      </dl>
+      <p className="text-xs text-amber-600">Chỉ bấm khi đã thấy tiền về tài khoản với đúng số tiền và nội dung trên. Khoản thu ghi vào ca đang mở.</p>
+      <Field label="Mã giao dịch ngân hàng" hint="Không bắt buộc — để trống thì lưu nội dung CK">
+        <input value={ref} maxLength={100} onChange={(e) => setRef(e.target.value)} className={inputCls} />
+      </Field>
+      <ErrorLine text={err} />
+      <div className="flex justify-end gap-2">
+        <button onClick={onClose} className="rounded-xl border border-slate-800 px-4 py-2 text-sm text-slate-300">Đóng</button>
+        <button onClick={() => { setErr(""); m.mutate(); }} disabled={m.isPending}
+          className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50">
+          {m.isPending ? "Đang ghi…" : "Xác nhận đã nhận tiền"}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+function BankDialog({ onClose }: { onClose: () => void }) {
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery({ queryKey: ["paymentSettings"], queryFn: getPaymentSettings });
+  const [s, setS] = useState<PaymentSettings | null>(null);
+  const [err, setErr] = useState("");
+  const v: PaymentSettings = s ?? data ?? { bank_transfer_enabled: false, bank_bin: "", bank_account_no: "", bank_account_name: "" };
+  const set = (patch: Partial<PaymentSettings>) => setS({ ...v, ...patch });
+  const known = VN_BANKS.some((b) => b.bin === v.bank_bin);
+  const [otherBin, setOtherBin] = useState(false);
+
+  const m = useMutation({
+    mutationFn: () => savePaymentSettings({
+      bank_transfer_enabled: v.bank_transfer_enabled, bank_bin: v.bank_bin || null,
+      bank_account_no: v.bank_account_no?.trim() || null, bank_account_name: v.bank_account_name?.trim() || null,
+    }),
+    onSuccess: () => { toast.success("Đã lưu tài khoản nhận tiền"); qc.invalidateQueries({ queryKey: ["paymentSettings"] }); onClose(); },
+    onError: (e) => setErr(errorText(e, "Không lưu được.")),
+  });
+
+  return (
+    <Modal title="Tài khoản nhận chuyển khoản" onClose={onClose}>
+      {isLoading ? <p className="text-sm text-slate-400">Đang tải…</p> : (
+        <>
+          <p className="text-xs text-slate-400">Khách thấy mã VietQR (đã điền số tiền và nội dung) sau khi shop xác nhận đơn. Chỉ chủ shop sửa được mục này.</p>
+          <Field label="Ngân hàng">
+            {!otherBin && (known || !v.bank_bin) ? (
+              <select value={v.bank_bin ?? ""} className={inputCls}
+                onChange={(e) => (e.target.value === "khac" ? setOtherBin(true) : set({ bank_bin: e.target.value }))}>
+                <option value="">— Chọn ngân hàng —</option>
+                {VN_BANKS.map((b) => <option key={b.bin} value={b.bin}>{b.name}</option>)}
+                <option value="khac">Ngân hàng khác (nhập mã BIN)…</option>
+              </select>
+            ) : (
+              <input value={v.bank_bin ?? ""} inputMode="numeric" maxLength={6} placeholder="Mã BIN 6 số, VD: 970436"
+                onChange={(e) => set({ bank_bin: e.target.value.replace(/\D/g, "") })} className={`${inputCls} font-mono`} />
+            )}
+          </Field>
+          <Field label="Số tài khoản">
+            <input value={v.bank_account_no ?? ""} maxLength={19} onChange={(e) => set({ bank_account_no: e.target.value.replace(/[^0-9A-Za-z]/g, "") })}
+              className={`${inputCls} font-mono`} />
+          </Field>
+          <Field label="Tên chủ tài khoản" hint="In hoa không dấu, đúng như ngân hàng hiển thị">
+            <input value={v.bank_account_name ?? ""} onChange={(e) => set({ bank_account_name: toAccountName(e.target.value) })} className={inputCls} />
+          </Field>
+          <label className="flex items-center gap-2 text-sm font-medium text-slate-200">
+            <input type="checkbox" className="h-4 w-4 accent-indigo-500" checked={v.bank_transfer_enabled}
+              onChange={(e) => set({ bank_transfer_enabled: e.target.checked })} />
+            Cho khách chuyển khoản qua VietQR{v.bank_bin ? ` (${bankName(v.bank_bin)})` : ""}
+          </label>
+          <ErrorLine text={err} />
+          <div className="flex justify-end gap-2">
+            <button onClick={onClose} className="rounded-xl border border-slate-800 px-4 py-2 text-sm text-slate-300">Hủy</button>
+            <button onClick={() => { setErr(""); m.mutate(); }} disabled={m.isPending}
+              className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50">Lưu</button>
+          </div>
+        </>
+      )}
     </Modal>
   );
 }

@@ -2,7 +2,7 @@
 
 > Trạng thái (2026-11-15): đã làm C1–C5. Migration `20261119000050_website_enums`,
 > `…100_website_schema`, `…200_website_rpc`, `…300_online_orders_rpc`; test
-> `supabase/tests/website_test.sql` (62 test). Thiết kế gốc: [multi-shop-design.md](multi-shop-design.md) §3–4.
+> `supabase/tests/website_test.sql` (62 test). Nâng cao (VietQR, lịch trống, tin tức, nén ảnh): §8. Thiết kế gốc: [multi-shop-design.md](multi-shop-design.md) §3–4.
 
 ## 1. Bất biến
 
@@ -80,7 +80,38 @@ Internet ─► Caddy :443 ─► web :3000 ─► Supabase
 ## 7. Chưa làm
 
 - Món có tùy chọn (size, topping) chưa đặt online được — website hướng khách gọi tại quầy.
-- Thanh toán online (VietQR + đối soát), giao hàng có phí ship, báo khách qua SMS / Zalo ZNS khi shop xác nhận.
-- Lịch trống công khai cho đồ thuê (hiện khách gửi yêu cầu, shop kiểm lúc xác nhận).
-- Bài viết / tin tức (`posts_list`), đa ngôn ngữ, resize ảnh khi tải lên.
-- Hai nhà cung cấp SMS và kiểm DNS mới viết theo tài liệu API, **chưa thử với tài khoản thật**.
+- Giao hàng có phí ship; báo khách qua SMS / Zalo ZNS khi shop xác nhận; đa ngôn ngữ.
+- Chuyển khoản chỉ cho **đơn món / hàng**; đặt lịch thuê vẫn thu cọc / tiền thuê tại shop. Không có webhook
+  ngân hàng (đối soát tay theo mã). Ảnh QR lấy từ `img.vietqr.io` (chuỗi EMVCo cũng dựng sẵn ở `utils/vietqr.ts`
+  nếu sau này muốn tự vẽ QR, không phụ thuộc dịch vụ ngoài).
+- Lịch trống công khai chưa tính đơn online **còn chờ** (chưa giữ lịch); hàng số lượng cộng mọi lượt thuê chạm ngày
+  (thiên về "kín"). Shop vẫn kiểm trùng lịch thật lúc xác nhận.
+- Dung lượng ảnh chặn ở lần tải **tiếp theo** sau khi chạm hạn mức (vượt tối đa một file ≤ 5 MB); ảnh không còn
+  dùng chưa tự dọn.
+- Hai nhà cung cấp SMS, kiểm DNS và ảnh `img.vietqr.io` mới viết theo tài liệu API, **chưa thử với tài khoản thật**.
+
+## 8. Website nâng cao (VietQR, lịch trống, tin tức, nén ảnh)
+
+Migration `20261124000050_website_advanced_enums`, `…100_website_advanced_schema`, `…200_website_advanced_rpc`;
+test `supabase/tests/website_advanced_test.sql` (59 test).
+
+| | Bất biến | Giữ bằng |
+|---|---|---|
+| P1 | Mỗi đơn online một nội dung CK duy nhất, không sửa được | `online_requests.transfer_code` = `OL` + 6 số id + 4 HEX ngẫu nhiên (cột generated, unique; trigger chặn sửa `pay_nonce`) |
+| P2 | Tài khoản nhận tiền chỉ chủ shop đổi | `shop_payment_settings` không cấp quyền ghi trực tiếp; RPC `save_shop_payment_settings` (owner), ghi `audit_logs` |
+| P3 | Tiền chuyển khoản vào sổ như mọi khoản thu | `confirm_online_payment` (quản lý trở lên, cần ca mở) gọi `complete_draft_order` với `bank_transfer`, `transaction_ref` = mã CK → `payments` + `cashbook` + doanh số ca |
+| N1 | Khách chỉ đọc bài đã đăng tới giờ | RLS `shop_posts` chỉ nhân viên; anon gọi `get_public_posts` / `get_public_post` (`published` và `published_at <= now()`) |
+| N2 | Bài viết và dung lượng ảnh theo gói | `subscription_plans.max_site_posts` (mặc định 50, đếm dưới khóa `shop_sites`); `storage_mb` (mặc định 200) — policy insert bucket `sites` gọi `app.can_upload_site_object` |
+
+- **VietQR**: chủ shop nhập ngân hàng (BIN NAPAS), số tài khoản, tên in hoa không dấu ở `/online` → "Tài khoản nhận tiền".
+  Sau khi shop xác nhận đơn, khách thấy QR (đã có số tiền + nội dung) ở màn đặt xong và trang Tài khoản
+  (`my_online_payment`: chỉ chủ đơn; số tài khoản chỉ trả khi đơn đang chờ thanh toán). Màn `/online` có ô
+  **Đối soát**: dán nội dung CK / tin báo ngân hàng → lọc đơn có mã khớp → "Đã nhận CK".
+- **Lịch trống**: `get_public_rental_calendar(shop, item, from, days)` (anon) trả `{item_id, from, days:[{date, free}]}`,
+  tối đa 62 ngày / lần, không quá khứ, không quá 180 ngày tới. "Trống" = còn ít nhất một chiếc rảnh cả ngày (giờ VN).
+  Trang `/dat-hang` của shop thuê hiện lịch gộp cho các món trong giỏ (cả khi chưa đăng nhập); bấm ngày để chọn nhận / trả.
+- **Tin tức**: tab "Tin tức" ở `/website` (nháp / đăng / hẹn giờ, ảnh bìa, markdown tối giản như khối văn bản).
+  Trang `/tin-tuc` (12 bài / trang, `?trang=`) và `/tin-tuc/<slug>` (JSON-LD `BlogPosting`); có bài thì menu tự thêm
+  "Tin tức", sitemap thêm từng bài. `/tin-tuc` thành đường dẫn hệ thống (trang cũ trùng đổi thành `/trang-tin-tuc…`).
+- **Ảnh**: `uploadSiteImage` thu nhỏ cạnh dài ≤ 1920 px, nén WebP (Safari cũ: JPEG) bằng canvas, nhận ảnh gốc tới 25 MB;
+  sau nén mới kiểm 5 MB và dung lượng gói (`get_site_storage`, hiện ở cột trang của `/website`).

@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import PhoneLogin, { useCustomerSession } from "@/components/site/PhoneLogin";
+import TransferQR from "@/components/site/TransferQR";
 import { customerClient, rpc } from "@/utils/customerAuth";
 import { href, vnd, type PublicSite } from "@/utils/site";
 
@@ -102,6 +103,8 @@ export default function AccountClient({ site, base }: { site: PublicSite; base: 
                     {r.status === "pending" && <button onClick={() => cancel(r.id)} className="text-rose-600 hover:underline">Hủy đơn</button>}
                   </div>
                   {r.reject_reason && r.status !== "pending" && <p className="mt-2 text-sm text-rose-700">Lý do: {r.reject_reason}</p>}
+                  {site.online?.bank_transfer && r.kind === "order" && !r.fulfilled
+                    && (r.status === "confirmed" || r.status === "auto_confirmed") && <TransferQR requestId={r.id} compact />}
                 </li>
               );
             })}

@@ -1,0 +1,46 @@
+# Giữ project Supabase gói miễn phí không bị tạm dừng (pause sau ~7 ngày không có request).
+#
+# Mỗi ngày gọi 1 RPC công khai, chỉ đọc (site_resolve_domain với tên miền không tồn tại → null).
+# Không ghi gì vào database, không cần service role key.
+#
+# Cần 2 secret ở GitHub → Settings → Secrets and variables → Actions:
+#   SUPABASE_URL       https://<ref>.supabase.co
+#   SUPABASE_ANON_KEY  Publishable key "sb_publishable_…" (Project Settings → API Keys)
+#                      hoặc anon key cũ "eyJ…" (tab Legacy API Keys). KHÔNG dùng secret / service_role key.
+#
+# Lưu ý: GitHub tự tắt workflow theo lịch nếu repo không có commit trong 60 ngày;
+# khi đó vào tab Actions bật lại, hoặc bấm "Run workflow".
+name: Supabase keep-alive
+
+on:
+  schedule:
+    - cron: "17 2 * * *"   # 02:17 UTC = 09:17 giờ Việt Nam, mỗi ngày
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Gọi Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::error::Thiếu secret SUPABASE_URL hoặc SUPABASE_ANON_KEY"
+            exit 1
+          fi
+          # Key cũ (anon, JWT "eyJ…") gửi kèm Authorization; key mới (sb_publishable_…) chỉ gửi apikey
+          auth=()
+          case "$SUPABASE_ANON_KEY" in eyJ*) auth=(-H "Authorization: Bearer $SUPABASE_ANON_KEY") ;; esac
+          status=$(curl -sS -o /tmp/body -w '%{http_code}' --retry 3 --retry-delay 10 \
+            -X POST "$SUPABASE_URL/rest/v1/rpc/site_resolve_domain" \
+            -H "apikey: $SUPABASE_ANON_KEY" "${auth[@]}" \
+            -H "Content-Type: application/json" \
+            -d '{"p_host":"keepalive.invalid"}')
+          echo "HTTP $status: $(cat /tmp/body)"
+          # 200 = database đã trả lời. 5xx / 540 = project đang tạm dừng hoặc lỗi → báo đỏ để biết
+          [ "$status" = "200" ]

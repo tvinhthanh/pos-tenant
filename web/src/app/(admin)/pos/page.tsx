@@ -28,6 +28,7 @@ import {
 } from "@/utils/productOptions";
 import { toast } from "@/components/Toaster";
 import { getBranchProfile, vietQrUrl } from "@/utils/rpc";
+import { addItemsToOrder } from "@/utils/fnb";
 import { PAYMENT_METHODS, orderItemCount, paymentLabel, pendingKitchenItemCount } from "@/components/pos/helpers";
 import OrderHistoryTab from "@/components/pos/OrderHistoryTab";
 import KitchenTab from "@/components/pos/KitchenTab";
@@ -210,6 +211,12 @@ function POSContent() {
   // 5. Mutation Tạo đơn hàng POS
   const createOrderMutation = useMutation({
     mutationFn: async (payload: any) => {
+      // Gọi thêm món vào đơn bàn đang mở (không đổi khách / voucher): RPC riêng,
+      // chỉ trừ kho phần thêm và tự tính lại voucher trên tổng mới.
+      if (payload?.add_items_order_id) {
+        const result = await addItemsToOrder(payload.add_items_order_id, payload.items, Boolean(payload.send_to_kitchen));
+        return { ...result, id: result.order_id, date: new Date().toISOString(), items: payload.receipt_items || [] };
+      }
       const endpoint = payload?.complete_order_id
         ? `/api/v1/pos/orders/${payload.complete_order_id}/complete`
         : "/api/v1/pos/orders";
@@ -440,6 +447,20 @@ function POSContent() {
       const newItems = cart.filter(item => !item.orderItemId);
       if (isDraft && newItems.length === 0) {
         setCheckoutError("Chưa có món mới để cập nhật cho đơn bàn này.");
+        return;
+      }
+
+      // Chỉ thêm món (khách và voucher giữ nguyên) → add_items_to_order.
+      // Đổi khách / voucher hoặc thanh toán → complete_draft_order như trước.
+      const sameCustomer = (customer?.id ?? null) === (activeOrder.customer?.id ?? activeOrder.customer_id ?? null);
+      const sameVoucher = (voucher?.code || "").toUpperCase() === (activeOrder.voucher?.code || "").toUpperCase();
+      if (isDraft && sameCustomer && sameVoucher) {
+        createOrderMutation.mutate({
+          add_items_order_id: activeOrder.id,
+          send_to_kitchen: sendToKitchen,
+          items: newItems.map(toOrderLine),
+          receipt_items: cart.map(toReceiptItem),
+        });
         return;
       }
 

@@ -406,6 +406,11 @@ verify_jwt = true
 enabled = true
 verify_jwt = false
 
+# Xuất báo cáo Excel; mọi truy vấn chạy bằng JWT người gọi (RPC tự kiểm chi nhánh + vai trò).
+[functions.export-report]
+enabled = true
+verify_jwt = true
+
 [analytics]
 enabled = true
 port = 55427

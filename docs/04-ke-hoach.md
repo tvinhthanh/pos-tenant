@@ -20,7 +20,7 @@ Không có 3 RPC này thì luồng "quán ngồi tại chỗ" chưa dùng đư�
 
 | # | Việc | Nguồn nghiệp vụ | Trạng thái |
 |---|---|---|---|
-| 1.1 | RPC `add_items_to_order` — gọi thêm món vào đơn `draft`, chỉ kiểm/trừ kho **phần chênh lệch** | `crud/business.py:606` | còn thiếu |
+| 1.1 | RPC `add_items_to_order` — gọi thêm món vào đơn `draft`, chỉ kiểm/trừ kho **phần chênh lệch** | `crud/business.py:606` | ✅ `20261122100100` (tính lại voucher trên tổng mới, giữ phần giảm bằng điểm) |
 | 1.2 | RPC `checkout_draft_order` — thanh toán đơn nháp: khóa ca, `payments`, sổ quỹ, loyalty, thống kê ca | `crud/business.py:690` | ✅ `complete_draft_order` |
 | 1.3 | RPC `create_cashbook_entry` — thu/chi thủ công, chỉ `owner` | `api/cashbook.py:595` | ✅ `20260818000100` |
 
@@ -50,8 +50,8 @@ ngưỡng duyệt. Đây là trọng tâm chống gian lận của hệ thống.
 |---|---|---|
 | 3.1 | RPC `get_financial_report(branch, from, to)` — revenue / cogs / gross_profit / opex / net_profit / `estimated_tax` + phân bổ chi phí theo nhóm | ✅ `20260818000100` |
 | 3.2 | RPC `get_shift_reconciliation(shift_id)` — đối chiếu kết ca theo phương thức thanh toán (bản cũ mock, xem #14). `close_shift` cũng đổi sang chỉ tính dòng tiền **mặt** cho `expected_balance` | ✅ `20260818000100` |
-| 3.3 | Edge Function `export-report` — Excel 5 sheet | còn thiếu |
-| 3.4 | RPC `forecast_revenue` — hồi quy tuyến tính + hệ số ngày trong tuần, thuần SQL | còn thiếu |
+| 3.3 | Edge Function `export-report` — Excel 5 sheet | ✅ `supabase/functions/export-report` (chạy bằng JWT người gọi) |
+| 3.4 | RPC `forecast_revenue` — hồi quy tuyến tính + hệ số ngày trong tuần, thuần SQL | ✅ `20261122100200` |
 
 > ⚠️ **Thuế khoán cần chốt lại**: `get_financial_report` đang tính
 > `estimated_tax = 1.5% doanh thu thuần` (1% GTGT + 0,5% TNCN — nhóm *phân phối,
@@ -134,17 +134,31 @@ supabase test db
 
 Bổ sung pgTAP cho các bất biến chống gian lận:
 
-- [ ] UPDATE/DELETE `cashbook` → phải lỗi
-- [ ] UPDATE `stock_movements` → phải lỗi
-- [ ] Sửa `ingredients.stock` từ client → phải lỗi
-- [ ] Sửa `products.price` trực tiếp → phải lỗi
-- [ ] Sửa `customers.points` trực tiếp → phải lỗi
-- [ ] Mở 2 ca cùng lúc 1 chi nhánh → phải lỗi
-- [ ] Bán khi hết nguyên liệu → phải lỗi, **không** để lại đơn rác
-- [ ] `Σ payments ≠ final_amount` → phải lỗi
-- [ ] Hoàn vượt `remaining` → phải lỗi
-- [ ] Hoàn 100% → tồn kho quay về đúng số trước khi bán
-- [ ] User chi nhánh A không đọc được dữ liệu chi nhánh B
-- [ ] `staff` không đọc được `audit_logs`
-- [ ] Chuỗi `balance_before`/`balance` liên tục sau N giao dịch đồng thời
-- [ ] Gọi `create_sales_order` 2 lần cùng `offline_ref` → chỉ 1 đơn
+- [x] UPDATE/DELETE `cashbook` → phải lỗi
+- [x] UPDATE `stock_movements` → phải lỗi
+- [x] Sửa `ingredients.stock` từ client → phải lỗi
+- [x] Sửa `products.price` trực tiếp → phải lỗi
+- [x] Sửa `customers.points` trực tiếp → phải lỗi
+- [x] Mở 2 ca cùng lúc 1 chi nhánh → phải lỗi
+- [x] Bán khi hết nguyên liệu → phải lỗi, **không** để lại đơn rác
+- [x] `Σ payments ≠ final_amount` → phải lỗi
+- [x] Hoàn vượt `remaining` → phải lỗi
+- [x] Hoàn 100% → tồn kho quay về đúng số trước khi bán
+- [x] User chi nhánh A không đọc được dữ liệu chi nhánh B
+- [x] `staff` không đọc được `audit_logs`
+- [x] Chuỗi `balance_before`/`balance` liên tục sau N giao dịch đồng thời
+- [x] Gọi `create_sales_order` 2 lần cùng `offline_ref` → chỉ 1 đơn
+
+> Các mục trên nằm ở `supabase/tests/fnb_invariants_test.sql` (32 test). Chuỗi số
+> dư kiểm sau 20 bút toán tuần tự trong một transaction — pgTAP không chạy được
+> giao dịch song song thật; tính tuần tự do `log_cashbook` khóa dòng `branches`
+> `FOR UPDATE`. Viết test phát hiện 2 lỗi, đã sửa:
+>
+> - **Hoàn 100% không hoàn kho** — `app.exec_refund` chuyển đơn sang `refunded`
+>   nhưng không trả nguyên liệu. Sửa ở `20261122100400`: đảo theo số dư ròng
+>   `stock_movements` của đơn (bỏ qua đơn đã có phiếu trả hàng bán lẻ).
+> - **`authenticated` còn quyền `TRUNCATE`** trên mọi bảng public (kể cả sổ quỹ,
+>   sổ kho, audit_logs) — TRUNCATE không qua RLS và trigger dòng. Sửa ở
+>   `20261122100300`: thu hồi quyền + trigger `BEFORE TRUNCATE` trên bảng append-only.
+>
+> `add_items_to_order` và `forecast_revenue`: `supabase/tests/fnb_add_items_forecast_test.sql` (26 test).

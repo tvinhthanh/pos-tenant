@@ -5,7 +5,10 @@ import { useQuery } from "@tanstack/react-query";
 
 import api from "@/utils/api";
 import SalesBreakdown from "@/components/SalesBreakdown";
-import { Calendar, ArrowRight, ShieldCheck } from "lucide-react";
+import RevenueForecast from "@/components/RevenueForecast";
+import { toast } from "@/components/Toaster";
+import { exportReportExcel } from "@/utils/fnb";
+import { Calendar, ArrowRight, ShieldCheck, FileSpreadsheet } from "lucide-react";
 
 
 // toISOString() đổi sang UTC nên ở múi giờ +07 sẽ lùi 1 ngày với mốc nửa đêm.
@@ -34,6 +37,19 @@ export default function Reports() {
     toDateInput(new Date(new Date().getFullYear(), new Date().getMonth(), 1))
   );
   const [endDate, setEndDate] = useState(toDateInput(new Date()));
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      await exportReportExcel(startDate, endDate);
+      toast.success("Đã xuất báo cáo Excel.");
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || "Xuất Excel thất bại.");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // 1. Fetch financial report data
   const { data: report, refetch: refetchReport } = useQuery({
@@ -104,6 +120,15 @@ export default function Reports() {
                 >
                   Lọc
                 </button>
+                <button
+                  onClick={handleExport}
+                  disabled={exporting}
+                  className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white px-3 py-1.5 rounded-lg font-semibold transition-all shrink-0"
+                  title="Xuất Excel 5 sheet: tổng quan, bán hàng, kết ca, chi phí, tồn kho"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  {exporting ? "Đang xuất..." : "Xuất Excel"}
+                </button>
               </div>
               </div>
             </div>
@@ -150,6 +175,9 @@ export default function Reports() {
                 </div>
               </div>
             )}
+
+            {/* Dự báo doanh thu (forecast_revenue) */}
+            <RevenueForecast />
 
             {/* Thống kê món / sốt / size / danh mục */}
             <div id="sales-breakdown" className="scroll-mt-20">

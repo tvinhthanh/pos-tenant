@@ -1,0 +1,40 @@
+# Internet ─► Caddy :443 ─► web (Next.js) :3000 ─► Supabase   (docs/website-design.md)
+#
+# Hai loại chứng chỉ:
+#   *.{$PLATFORM_DOMAIN}  — MỘT chứng chỉ wildcard qua DNS-01. Không dùng on-demand cho subdomain:
+#                           Let's Encrypt giới hạn 50 chứng chỉ / tên miền / tuần.
+#   tên miền riêng        — on-demand TLS, Caddy hỏi web /api/tls-ask trước; chỉ tên miền đã xác minh
+#                           (shop_domains.status = active) mới được xin chứng chỉ.
+{
+	email {$ACME_EMAIL}
+	on_demand_tls {
+		ask http://web:3000/api/tls-ask
+	}
+}
+
+# Gốc + app quản trị + mọi shop ở <subdomain>.{$PLATFORM_DOMAIN}
+{$PLATFORM_DOMAIN}, *.{$PLATFORM_DOMAIN} {
+	tls {
+		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+	}
+	encode zstd gzip
+	reverse_proxy web:3000 {
+		header_up X-Forwarded-Host {host}
+	}
+}
+
+# Tên miền riêng của shop (Next proxy tra shop_domains → /site/<shop>)
+https:// {
+	tls {
+		on_demand
+	}
+	encode zstd gzip
+	reverse_proxy web:3000 {
+		header_up X-Forwarded-Host {host}
+	}
+}
+
+# HTTP → HTTPS
+http:// {
+	redir https://{host}{uri} permanent
+}

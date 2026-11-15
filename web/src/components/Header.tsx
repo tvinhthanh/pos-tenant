@@ -2,12 +2,13 @@
 
 import React, { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Menu, Bell, Search, User, ShieldCheck } from "lucide-react";
+import { Menu, Search, ShieldCheck } from "lucide-react";
 import api from "@/utils/api";
 import type { MyShop } from "@/utils/shop";
 import { SHOP_ROLE_LABELS, type ShopRole } from "@/utils/shop";
 import ThemeToggle from "./ThemeToggle";
 import ShopSwitcher from "./ShopSwitcher";
+import OnlineBell from "./OnlineBell";
 
 interface HeaderProps {
   onMenuToggle: () => void;
@@ -22,7 +23,6 @@ export default function Header({ onMenuToggle }: HeaderProps) {
     shops?: MyShop[];
     is_org_owner?: boolean;
   } | null>(null);
-  const [hasNotifications, setHasNotifications] = useState(true);
 
   useEffect(() => {
     api.get("/api/v1/auth/me")
@@ -79,6 +79,10 @@ export default function Header({ onMenuToggle }: HeaderProps) {
         return "Kiểm kê";
       case "/retail/report":
         return "Báo cáo bán lẻ";
+      case "/website":
+        return "Website";
+      case "/online":
+        return "Đơn online";
       case "/marketing":
         return "Marketing & Loyalty";
       case "/superadmin/stores":
@@ -132,16 +136,8 @@ export default function Header({ onMenuToggle }: HeaderProps) {
         {/* Theme Toggle Button */}
         <ThemeToggle />
 
-        {/* Notifications */}
-        <button 
-          onClick={() => setHasNotifications(false)}
-          className="relative rounded-xl p-2.5 text-slate-400 hover:bg-slate-850 hover:text-slate-100 focus:outline-none border border-slate-850"
-        >
-          <Bell className="w-4 h-4" />
-          {hasNotifications && (
-            <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-indigo-500 ring-2 ring-slate-950 animate-pulse" />
-          )}
-        </button>
+        {/* Đơn online đang chờ (shop, không phải admin nền tảng) */}
+        {user && user.role !== "superadmin" && <OnlineBell />}
 
         {/* User Profile */}
         {user && (

@@ -333,7 +333,7 @@ Sau M1, **3 nhánh song song**, mỗi nhánh một worktree / session riêng:
 |---|---|---|
 | **A — Cho thuê** | Schema + bất biến R1–R8 → `compute_rental_fee` → RPC → bảng unit, thuê mới, trả đồ, lịch → báo cáo | Migration `rental_*`, `web/src/app/rental/**` |
 | **B — Bán lẻ** ✅ | Đã làm theo cách khác kế hoạch: hàng hóa gắn 1:1 với dòng tồn kho nên **không sửa** `create_sales_order`. Xem `docs/retail-design.md` | Migration `20261118*`, `web/src/app/retail/**` |
-| **C — Website & online** | C1 mẫu + trang + trình chỉnh sửa + render SSR + SEO → C2 Caddy + subdomain wildcard → C3 tài khoản khách OTP → C4 đơn online + tự xác nhận → C5 tên miền riêng | `site_*`, `shop_*`, `online_*`, `web/src/app/site/**`, `docker-compose.yml`, Caddyfile |
+| **C — Website & online** ✅ | Đã làm C1–C5, xem `docs/website-design.md` | Migration `20261119*`, `web/src/app/(site)/**`, `web/src/proxy.ts`, `caddy/`, `docker-compose.yml` |
 
 Chỗ có thể xung đột:
 - B không sửa `create_sales_order`, nên C4 không còn xung đột với B ở đây.

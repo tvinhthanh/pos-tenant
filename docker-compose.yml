@@ -6,11 +6,41 @@ services:
         NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:?NEXT_PUBLIC_SUPABASE_URL is required}
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?NEXT_PUBLIC_SUPABASE_ANON_KEY is required}
         NEXT_PUBLIC_INTERNAL_EMAIL_DOMAIN: ${NEXT_PUBLIC_INTERNAL_EMAIL_DOMAIN:-pos.local}
+        # Website shop ở <subdomain>.<PLATFORM_DOMAIN>; bỏ trống = chỉ chạy app quản trị
+        NEXT_PUBLIC_PLATFORM_DOMAIN: ${PLATFORM_DOMAIN:-}
     container_name: cms-pos-supabase-web
     environment:
       NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:?NEXT_PUBLIC_SUPABASE_URL is required}
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:?NEXT_PUBLIC_SUPABASE_ANON_KEY is required}
       NEXT_PUBLIC_INTERNAL_EMAIL_DOMAIN: ${NEXT_PUBLIC_INTERNAL_EMAIL_DOMAIN:-pos.local}
+      NEXT_PUBLIC_PLATFORM_DOMAIN: ${PLATFORM_DOMAIN:-}
+      # Supabase tự host cùng máy: server Next gọi qua mạng nội bộ thay vì URL công khai
+      SUPABASE_INTERNAL_URL: ${SUPABASE_INTERNAL_URL:-}
+    # Chỉ Caddy nhận traffic từ Internet; cổng 3001 để kiểm tra trực tiếp trên máy chủ
     ports:
-      - "3001:3000"
+      - "127.0.0.1:3001:3000"
     restart: unless-stopped
+
+  caddy:
+    build:
+      context: ./caddy
+    container_name: cms-pos-caddy
+    depends_on:
+      - web
+    environment:
+      PLATFORM_DOMAIN: ${PLATFORM_DOMAIN:?PLATFORM_DOMAIN is required for Caddy}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL is required for Let's Encrypt}
+      # Token Cloudflare quyền Zone.DNS:Edit cho zone PLATFORM_DOMAIN (chứng chỉ wildcard)
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:?CLOUDFLARE_API_TOKEN is required for wildcard TLS}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

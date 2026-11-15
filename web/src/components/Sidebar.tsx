@@ -7,7 +7,7 @@ import {
   LayoutDashboard, ShoppingCart, Package, DollarSign,
   Users, BarChart3, LogOut, Coffee, ShieldCheck, User, X,
   Map, History, Megaphone, Scale, Store, UtensilsCrossed, Settings,
-  LayoutGrid, FileText, Boxes, PieChart, Undo2, PackagePlus, ClipboardCheck
+  LayoutGrid, FileText, Boxes, PieChart, Undo2, PackagePlus, ClipboardCheck, Globe, Inbox
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import api, { supabase } from "@/utils/api";
@@ -37,11 +37,11 @@ const PATHS_BY_BUSINESS: Record<string, BusinessType[]> = {
 
 // Màn nhân viên (thu ngân) được vào, theo nghiệp vụ. RoleLayout dùng cùng hàm này.
 const STAFF_PATHS: Partial<Record<BusinessType, string[]>> = {
-  fnb: ["/pos"],
-  retail: ["/retail", "/retail/returns", "/retail/stocktake"],
+  fnb: ["/pos", "/online"],
+  retail: ["/retail", "/retail/returns", "/retail/stocktake", "/online"],
 };
 export const staffCanOpen = (type: BusinessType | null | undefined, path: string) => {
-  if (type === "rental") return path.startsWith("/rental") && !path.startsWith("/rental/report");
+  if (type === "rental") return (path.startsWith("/rental") && !path.startsWith("/rental/report")) || path === "/online";
   return (STAFF_PATHS[type ?? "fnb"] ?? []).includes(path);
 };
 
@@ -112,6 +112,8 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
         { name: "Tổng quan", path: "/", icon: LayoutDashboard },
         { name: "Khu vực & Bàn", path: "/tables", icon: Map },
         ...(canManageUsers ? [{ name: "Nhân viên", path: "/users", icon: User }] : []),
+        ...(canManageUsers ? [{ name: "Website", path: "/website", icon: Globe }] : []),
+        { name: "Đơn online", path: "/online", icon: Inbox },
         { name: "Thông tin quán", path: "/settings", icon: Settings },
       ]
     },

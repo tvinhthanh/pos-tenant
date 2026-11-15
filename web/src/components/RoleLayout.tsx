@@ -38,7 +38,8 @@ export default function RoleLayout({ children }: { children: React.ReactNode }) 
   const isStaff = user?.role === "staff";
   // Nhân viên: F&B chỉ dùng màn POS toàn màn hình; cho thuê / bán lẻ có vài màn tại quầy.
   const staffType = user?.business_type ?? "fnb";
-  const staffUsesShell = isStaff && (staffType === "rental" || staffType === "retail");
+  // Nhân viên F&B: POS toàn màn hình; màn Đơn online vẫn có khung (sidebar chỉ hiện POS + Đơn online)
+  const staffUsesShell = isStaff && (staffType === "rental" || staffType === "retail" || pathname === "/online");
   const staffHome = staffType === "rental" ? "/rental" : staffType === "retail" ? "/retail" : "/pos";
   const staffAllowed = staffCanOpen(staffType, pathname);
   const isSuperadmin = user?.role === "superadmin";

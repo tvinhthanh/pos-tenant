@@ -322,8 +322,9 @@ chạy song song với M1 đều sẽ xung đột.
 - Owner luôn được gán **toàn tổ chức** (`branch_id null`), kể cả owner cũ (backfill).
 
 Chưa làm trong M1:
-- Màn hình Nhân viên chưa có chỗ gán một người vào nhiều shop với vai trò khác nhau.
-  Edge Function đã nhận `branch_id` khi `update`; phần giao diện để sau.
+- ~~Gán một người vào nhiều shop với vai trò khác nhau~~ — xong (migration `20261120000100`):
+  tab **Phân quyền shop** ở màn Nhân viên, RPC `set_staff_assignments` (chỉ chủ tổ chức, khóa hồ sơ
+  nhân viên khi sửa, phải còn ≥ 1 shop, shop mặc định luôn là shop được gán).
 - Shop cho thuê chưa có màn hình nghiệp vụ nào (chờ nhánh A).
 - `profiles.role` vẫn còn, dùng làm vai trò hiển thị / toàn tổ chức.
 

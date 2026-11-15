@@ -11,6 +11,7 @@ import {
   DollarSign, Briefcase, Clock, CreditCard, Calendar
 } from "lucide-react";
 import { toast } from "@/components/Toaster";
+import StaffShopsMatrix from "@/components/StaffShopsMatrix";
 
 // Phải khớp với ràng buộc trong Edge Function manage-branch-user và cấu hình
 // Auth (docs/06: minimum password length ≥ 10).
@@ -44,7 +45,10 @@ const ROLE_LABELS: Record<string, string> = {
 
 export default function UserManagement() {
   const queryClient = useQueryClient();
-  const [activeSubTab, setActiveSubTab] = useState<"users" | "payroll">("users");
+  const [activeSubTab, setActiveSubTab] = useState<"users" | "payroll" | "shops">("users");
+  // Gán nhân viên nhiều shop: chỉ chủ cửa hàng (owner toàn tổ chức)
+  const { data: me } = useQuery({ queryKey: ["currentUser"], queryFn: async () => (await api.get("/api/v1/auth/me")).data });
+  const isOrgOwner = Boolean(me?.is_org_owner);
 
   // Modals state
   const [showAddModal, setShowAddModal] = useState(false);
@@ -338,6 +342,18 @@ export default function UserManagement() {
           >
             <span>Tính Lương &amp; Chi Quỹ</span>
           </button>
+          {isOrgOwner && (
+            <button
+              onClick={() => setActiveSubTab("shops")}
+              className={`flex-1 md:flex-initial px-4 py-2.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border ${
+                activeSubTab === "shops"
+                  ? "bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-600/20"
+                  : "bg-slate-900 border-slate-800 text-slate-400 hover:text-white"
+              }`}
+            >
+              <span>Phân quyền shop</span>
+            </button>
+          )}
           
           <button
             onClick={() => {
@@ -351,6 +367,9 @@ export default function UserManagement() {
           </button>
         </div>
       </div>
+
+      {/* TAB: GÁN NHIỀU SHOP */}
+      {activeSubTab === "shops" && isOrgOwner && <StaffShopsMatrix />}
 
       {/* TAB 1: USER LIST */}
       {activeSubTab === "users" && (

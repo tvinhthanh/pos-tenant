@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import AdminLayout from "@/components/AdminLayout";
 import ScreenLock from "@/components/ScreenLock";
 import api from "@/utils/api";
+import { staffCanOpen } from "@/components/Sidebar";
 
 type CurrentUser = {
   id: string;
@@ -35,12 +36,11 @@ export default function RoleLayout({ children }: { children: React.ReactNode }) 
   });
 
   const isStaff = user?.role === "staff";
-  // Nhân viên: F&B / bán lẻ chỉ dùng màn POS; shop cho thuê dùng các màn cho thuê.
-  const staffIsRental = isStaff && user?.business_type === "rental";
-  const staffHome = staffIsRental ? "/rental" : "/pos";
-  const staffAllowed = staffIsRental
-    ? pathname.startsWith("/rental") && !pathname.startsWith("/rental/report")
-    : pathname === "/pos";
+  // Nhân viên: F&B chỉ dùng màn POS toàn màn hình; cho thuê / bán lẻ có vài màn tại quầy.
+  const staffType = user?.business_type ?? "fnb";
+  const staffUsesShell = isStaff && (staffType === "rental" || staffType === "retail");
+  const staffHome = staffType === "rental" ? "/rental" : staffType === "retail" ? "/retail" : "/pos";
+  const staffAllowed = staffCanOpen(staffType, pathname);
   const isSuperadmin = user?.role === "superadmin";
 
   useEffect(() => {
@@ -77,7 +77,7 @@ export default function RoleLayout({ children }: { children: React.ReactNode }) 
   }
 
   // Khóa màn hình bằng PIN của chính tài khoản đang đăng nhập (mọi trang, kể cả POS).
-  if (isStaff && !staffIsRental) {
+  if (isStaff && !staffUsesShell) {
     return <ScreenLock key={user.id} user={user}>{children}</ScreenLock>;
   }
 

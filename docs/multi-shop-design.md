@@ -332,11 +332,11 @@ Sau M1, **3 nhánh song song**, mỗi nhánh một worktree / session riêng:
 | Nhánh | Nội dung theo thứ tự | Đụng vào |
 |---|---|---|
 | **A — Cho thuê** | Schema + bất biến R1–R8 → `compute_rental_fee` → RPC → bảng unit, thuê mới, trả đồ, lịch → báo cáo | Migration `rental_*`, `web/src/app/rental/**` |
-| **B — Bán lẻ** | `stock_mode`, `products.barcode`, `stock_movements.product_id` → nhánh trong `create_sales_order` → POS bán lẻ + quét mã vạch → nhập hàng theo sản phẩm | Migration sản phẩm/kho, `web/src/app/pos` (chế độ retail) |
+| **B — Bán lẻ** ✅ | Đã làm theo cách khác kế hoạch: hàng hóa gắn 1:1 với dòng tồn kho nên **không sửa** `create_sales_order`. Xem `docs/retail-design.md` | Migration `20261118*`, `web/src/app/retail/**` |
 | **C — Website & online** | C1 mẫu + trang + trình chỉnh sửa + render SSR + SEO → C2 Caddy + subdomain wildcard → C3 tài khoản khách OTP → C4 đơn online + tự xác nhận → C5 tên miền riêng | `site_*`, `shop_*`, `online_*`, `web/src/app/site/**`, `docker-compose.yml`, Caddyfile |
 
 Chỗ có thể xung đột:
-- B và C4 cùng đụng `create_sales_order` / đơn `draft`. C4 làm sau B, hoặc chỉ gọi RPC công khai, không sửa thân RPC.
+- B không sửa `create_sales_order`, nên C4 không còn xung đột với B ở đây.
 - A và C4 cùng đụng `create_reservation`. Tương tự, C4 chỉ gọi.
 - Đặt tiền tố timestamp migration riêng cho từng nhánh để tránh trùng tên file khi merge.
 

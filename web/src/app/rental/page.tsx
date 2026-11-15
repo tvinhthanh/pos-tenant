@@ -3,9 +3,8 @@
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, CalendarClock, Lock, Plus, RefreshCw, Search, Unlock } from "lucide-react";
-import api from "@/utils/api";
-import ShiftModal from "@/components/ShiftModal";
+import { AlertTriangle, CalendarClock, Plus, RefreshCw, Search } from "lucide-react";
+import ShiftButton from "@/components/ShiftButton";
 import { getRentalBoard, fmtTime, UNIT_STATUS_LABELS, type BoardUnit, type UnitStatus } from "@/utils/rental";
 import { errorText } from "@/components/Toaster";
 
@@ -179,31 +178,6 @@ export default function RentalBoardPage() {
         </section>
       )}
     </div>
-  );
-}
-
-// Giao đồ, nhận cọc, tất toán đều cần ca đang mở (tiền vào két của ca).
-function ShiftButton() {
-  const [open, setOpen] = useState(false);
-  const { data: shift, isLoading } = useQuery({
-    queryKey: ["currentShift"],
-    queryFn: async () => (await api.get("/api/v1/shifts/current")).data as { status?: string; opened_at?: string } | null,
-  });
-  if (isLoading) return null;
-  const isOpen = shift?.status === "open";
-  return (
-    <>
-      <button
-        onClick={() => setOpen(true)}
-        className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-semibold ${
-          isOpen ? "border-emerald-500/40 text-emerald-500 hover:bg-emerald-500/10" : "border-amber-500/50 bg-amber-500/10 text-amber-600 hover:bg-amber-500/20"
-        }`}
-      >
-        {isOpen ? <Unlock className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
-        {isOpen ? "Ca đang mở · Chốt ca" : "Chưa mở ca · Mở ca"}
-      </button>
-      <ShiftModal isOpen={open} onClose={() => setOpen(false)} />
-    </>
   );
 }
 

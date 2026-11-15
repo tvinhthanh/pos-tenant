@@ -7,7 +7,7 @@ import {
   LayoutDashboard, ShoppingCart, Package, DollarSign,
   Users, BarChart3, LogOut, Coffee, ShieldCheck, User, X,
   Map, History, Megaphone, Scale, Store, UtensilsCrossed, Settings,
-  LayoutGrid, FileText, Boxes, PieChart
+  LayoutGrid, FileText, Boxes, PieChart, Undo2, PackagePlus, ClipboardCheck
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import api, { supabase } from "@/utils/api";
@@ -18,15 +18,31 @@ import { BUSINESS_TYPE_LABELS, type BusinessType } from "@/utils/shop";
 // (Chỉ ẩn menu; DB tự chặn RPC sai nghiệp vụ trong app.assert_service.)
 const PATHS_BY_BUSINESS: Record<string, BusinessType[]> = {
   "/tables": ["fnb"],
-  "/pos": ["fnb", "retail"],
-  "/menu": ["fnb", "retail"],
-  "/inventory": ["fnb", "retail"],
+  "/pos": ["fnb"],
+  "/menu": ["fnb"],
+  "/inventory": ["fnb"],
   "/inventory/adjustments": ["fnb", "retail"],
   "/suppliers": ["fnb", "retail"],
   "/rental": ["rental"],
   "/rental/contracts": ["rental"],
   "/rental/catalog": ["rental"],
   "/rental/report": ["rental"],
+  "/retail": ["retail"],
+  "/retail/returns": ["retail"],
+  "/retail/products": ["retail"],
+  "/retail/receive": ["retail"],
+  "/retail/stocktake": ["retail"],
+  "/retail/report": ["retail"],
+};
+
+// Màn nhân viên (thu ngân) được vào, theo nghiệp vụ. RoleLayout dùng cùng hàm này.
+const STAFF_PATHS: Partial<Record<BusinessType, string[]>> = {
+  fnb: ["/pos"],
+  retail: ["/retail", "/retail/returns", "/retail/stocktake"],
+};
+export const staffCanOpen = (type: BusinessType | null | undefined, path: string) => {
+  if (type === "rental") return path.startsWith("/rental") && !path.startsWith("/rental/report");
+  return (STAFF_PATHS[type ?? "fnb"] ?? []).includes(path);
 };
 
 interface SidebarProps {
@@ -65,10 +81,10 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
   const canManageUsers = isOwner || user?.role === "manager";
   const businessType: BusinessType = user?.business_type ?? "fnb";
   const isStaff = user?.role === "staff";
-  // Nhân viên shop cho thuê chỉ làm việc trong các màn hình cho thuê (RoleLayout cũng chặn).
+  // Nhân viên chỉ thấy các màn làm việc tại quầy của nghiệp vụ shop (RoleLayout cũng chặn).
   const allowedHere = (path: string) =>
     (!PATHS_BY_BUSINESS[path] || PATHS_BY_BUSINESS[path].includes(businessType)) &&
-    (!isStaff || (path.startsWith("/rental") && path !== "/rental/report"));
+    (!isStaff || staffCanOpen(businessType, path));
 
   // Tên quán lấy từ trang "Thông tin quán" (hoặc tên cửa hàng), không viết cứng
   const { data: branchProfile } = useQuery({
@@ -105,8 +121,13 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
         { name: "Bảng cho thuê", path: "/rental", icon: LayoutGrid },
         { name: "Hợp đồng thuê", path: "/rental/contracts", icon: FileText },
         { name: "Danh mục cho thuê", path: "/rental/catalog", icon: Boxes },
+        { name: "Bán hàng", path: "/retail", icon: ShoppingCart },
+        { name: "Trả hàng", path: "/retail/returns", icon: Undo2 },
+        { name: "Sản phẩm", path: "/retail/products", icon: Package },
+        { name: "Nhập hàng", path: "/retail/receive", icon: PackagePlus },
+        { name: "Kiểm kê", path: "/retail/stocktake", icon: ClipboardCheck },
         { name: "POS Bán hàng", path: "/pos", icon: ShoppingCart },
-        { name: businessType === "retail" ? "Sản phẩm" : "Thực đơn & Tùy chọn", path: "/menu", icon: UtensilsCrossed },
+        { name: "Thực đơn & Tùy chọn", path: "/menu", icon: UtensilsCrossed },
         { name: "Kho & Định lượng", path: "/inventory", icon: Package },
         { name: "Điều chỉnh kho", path: "/inventory/adjustments", icon: Scale },
       ]
@@ -123,6 +144,7 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
       title: "Báo cáo",
       items: [
         { name: "Báo cáo cho thuê", path: "/rental/report", icon: PieChart },
+        { name: "Báo cáo bán lẻ", path: "/retail/report", icon: PieChart },
         { name: "Báo cáo & Thuế", path: "/reports", icon: BarChart3 },
         { name: "Lịch sử ca", path: "/shifts", icon: History },
       ]

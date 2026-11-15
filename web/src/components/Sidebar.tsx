@@ -7,7 +7,8 @@ import {
   LayoutDashboard, ShoppingCart, Package, DollarSign,
   Users, BarChart3, LogOut, Coffee, ShieldCheck, User, X,
   Map, History, Megaphone, Scale, Store, UtensilsCrossed, Settings,
-  LayoutGrid, FileText, Boxes, PieChart, Undo2, PackagePlus, ClipboardCheck, Globe, Inbox
+  LayoutGrid, FileText, Boxes, PieChart, Undo2, PackagePlus, ClipboardCheck, Globe, Inbox,
+  CalendarDays
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import api, { supabase } from "@/utils/api";
@@ -26,6 +27,7 @@ const PATHS_BY_BUSINESS: Record<string, BusinessType[]> = {
   "/rental": ["rental"],
   "/rental/contracts": ["rental"],
   "/rental/catalog": ["rental"],
+  "/rental/calendar": ["rental"],
   "/rental/report": ["rental"],
   "/retail": ["retail"],
   "/retail/returns": ["retail"],
@@ -122,6 +124,7 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
       items: [
         { name: "Bảng cho thuê", path: "/rental", icon: LayoutGrid },
         { name: "Hợp đồng thuê", path: "/rental/contracts", icon: FileText },
+        { name: "Lịch cho thuê", path: "/rental/calendar", icon: CalendarDays },
         { name: "Danh mục cho thuê", path: "/rental/catalog", icon: Boxes },
         { name: "Bán hàng", path: "/retail", icon: ShoppingCart },
         { name: "Trả hàng", path: "/retail/returns", icon: Undo2 },

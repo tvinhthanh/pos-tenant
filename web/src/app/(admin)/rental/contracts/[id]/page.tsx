@@ -4,8 +4,10 @@ import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowLeft, CheckCircle2, Clock, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, Clock, Printer, X } from "lucide-react";
 import api from "@/utils/api";
+import { getBranchProfile } from "@/utils/rpc";
+import { printRentalContract, printSettlementReceipt } from "@/utils/rental-print";
 import {
   addRentalCharge, cancelRental, checkOutRental, extendRental, fmtTime, getContractDetail, resolveApproval,
   returnRental, settleRental, toLocalInput, fromLocalInput, vnd,
@@ -43,7 +45,19 @@ export default function ContractPage() {
     queryClient.invalidateQueries({ queryKey: ["rentalContract", contractId] });
     queryClient.invalidateQueries({ queryKey: ["rentalBoard"] });
     queryClient.invalidateQueries({ queryKey: ["rentalContracts"] });
+    queryClient.invalidateQueries({ queryKey: ["rentalOverdue"] });
+    queryClient.invalidateQueries({ queryKey: ["rentalCalendar"] });
   };
+
+  const print = useMutation({
+    mutationFn: async (kind: "contract" | "settlement") => {
+      const shop = await queryClient.fetchQuery({ queryKey: ["branchProfile"], queryFn: getBranchProfile, staleTime: 5 * 60_000 });
+      if (!data) return;
+      if (kind === "contract") printRentalContract(data, shop);
+      else printSettlementReceipt(data, shop);
+    },
+    onError: (e) => toast.error(errorText(e, "Không in được.")),
+  });
 
   const checkOut = useMutation({
     mutationFn: () => checkOutRental(contractId),
@@ -77,6 +91,16 @@ export default function ContractPage() {
           {overdue ? "Quá hạn" : CONTRACT_STATUS_LABELS[c.status]}
         </span>
         <div className="ml-auto flex flex-wrap gap-2">
+          {c.status !== "cancelled" && (
+            <button className={btnGhost} disabled={print.isPending} onClick={() => print.mutate("contract")}>
+              <Printer className="mr-1 inline h-4 w-4" />In hợp đồng
+            </button>
+          )}
+          {c.status === "closed" && (
+            <button className={btnGhost} disabled={print.isPending} onClick={() => print.mutate("settlement")}>
+              <Printer className="mr-1 inline h-4 w-4" />In phiếu tất toán
+            </button>
+          )}
           {c.status === "reserved" && (
             <>
               <button className={btnGhost} onClick={() => setDialog("cancel")}>Hủy đặt</button>

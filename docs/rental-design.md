@@ -17,8 +17,24 @@ Status: **draft for review**. No code has been changed yet; this file decides wh
 >   never change it — availability comes from `rental_lines`.
 > - Fees are billed at return from **actual** time; the part beyond the planned end is a separate
 >   `late` charge. Early return bills actual time. No `no_show` status yet (cancel covers it);
->   no calendar screen yet; 24-hour blocks only (no calendar-day setting).
+>   calendar added in phase 5 (below); 24-hour blocks only (no calendar-day setting).
 > - R7 uses the existing approval engine: new actions `charge_waiver`, `deposit_forfeit`.
+>
+> **Phase 5 implemented (2026-11-21)** — migration `20261121000100_rental_phase5.sql`, test
+> `supabase/tests/rental_phase5_test.sql`:
+> - **Calendar** `/rental/calendar` (day / week, per unit; bulk items in lanes with peak-usage vs total) from
+>   RPC `rental_calendar(branch, from, to)` — reads `rental_lines` only, max 62 days per call. Overdue `out`
+>   lines are drawn up to now.
+> - **Overdue** RPC `rental_overdue(branch)` (staff+): contracts with `out` lines past `upper(period)`, with the
+>   late fee accruing now (same formula as `return_rental`) and deposit held. Alert banner on board,
+>   contracts list and calendar. Reminders are only **queued** in `rental_notification_outbox`
+>   (`app.enqueue_rental_overdue_notices()`, pg_cron hourly, ≥ 1 h late, one per contract per VN day);
+>   nothing sends them yet.
+> - **Report** `get_rental_report` replaced (same signature, old keys kept): revenue split
+>   rental / late / damage+loss / other / discount+waiver / forfeited deposits, per day/week/month bucket;
+>   deposit flows in period; utilization with hours, rentals and revenue per item; overdue list.
+> - **Printing** `web/src/utils/rental-print.ts`: A4 contract (parties, items, period, deposit, collateral,
+>   default terms) and K80 settlement receipt, via `printHtmlSilent` in `utils/printer.ts`.
 >
 > **Concurrency** (verified with two real concurrent psql sessions, not only pgTAP):
 > | Race | Guard |

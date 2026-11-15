@@ -223,3 +223,33 @@ export function sendToPrintBridge(
     }
   });
 }
+
+/**
+ * In một tài liệu HTML bất kỳ (hợp đồng A4, phiếu K80…) qua cùng iFrame ngầm
+ * với printReceiptSilent. Nội dung phải tự escape dữ liệu người dùng.
+ */
+export function printHtmlSilent(htmlContent: string) {
+  if (typeof window === "undefined") return;
+
+  let iframe = document.getElementById("melio_print_iframe") as HTMLIFrameElement;
+  if (!iframe) {
+    iframe = document.createElement("iframe");
+    iframe.id = "melio_print_iframe";
+    iframe.style.position = "absolute";
+    iframe.style.width = "0px";
+    iframe.style.height = "0px";
+    iframe.style.border = "none";
+    document.body.appendChild(iframe);
+  }
+
+  const doc = iframe.contentWindow?.document;
+  if (doc) {
+    doc.open();
+    doc.write(htmlContent);
+    doc.close();
+    setTimeout(() => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+    }, 250);
+  }
+}

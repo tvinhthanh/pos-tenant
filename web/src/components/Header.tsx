@@ -65,6 +65,8 @@ export default function Header({ onMenuToggle }: HeaderProps) {
         return "Hợp đồng thuê";
       case "/rental/catalog":
         return "Danh mục cho thuê";
+      case "/rental/calendar":
+        return "Lịch cho thuê";
       case "/rental/report":
         return "Báo cáo cho thuê";
       case "/retail":

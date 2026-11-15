@@ -336,12 +336,108 @@ export const addRentalCharge = (
 export const resolveApproval = (requestId: number, approve: boolean, note?: string) =>
   call("resolve_approval_request", { p_request_id: requestId, p_approve: approve, p_note: note || null });
 
+// ---------------------------------------------------------------------------
+// Quá hạn (giai đoạn 5)
+// ---------------------------------------------------------------------------
+export interface OverdueContract {
+  contract_id: number;
+  code: string;
+  customer_id: number;
+  customer: string;
+  phone: string;
+  due: string;
+  overdue_minutes: number;
+  late_fee: number;
+  fee_so_far: number;
+  deposit_held: number;
+  lines: { line_id: number; item: string; unit_code: string | null; quantity: number; due: string; late_fee: number }[];
+}
+
+export async function getOverdue() {
+  const { branchId } = await activeContext();
+  return call<{ now: string; contracts: OverdueContract[] }>("rental_overdue", { p_branch_id: branchId });
+}
+
+/** 1.500 phút → "1 ngày 1 giờ" */
+export function fmtDuration(minutes: number): string {
+  const d = Math.floor(minutes / 1440);
+  const h = Math.floor((minutes % 1440) / 60);
+  const m = minutes % 60;
+  if (d > 0) return h > 0 ? `${d} ngày ${h} giờ` : `${d} ngày`;
+  if (h > 0) return m > 0 ? `${h} giờ ${m} phút` : `${h} giờ`;
+  return `${Math.max(m, 0)} phút`;
+}
+
+// ---------------------------------------------------------------------------
+// Lịch cho thuê (giai đoạn 5) — lấy từ rental_lines, không từ trạng thái unit
+// ---------------------------------------------------------------------------
+export interface CalendarItem {
+  item_id: number;
+  name: string;
+  category: string | null;
+  tracking_mode: TrackingMode;
+  total: number;
+  units: { unit_id: number; code: string; status: UnitStatus }[];
+}
+export interface CalendarBooking {
+  line_id: number;
+  contract_id: number;
+  code: string;
+  contract_status: ContractStatus;
+  customer: string;
+  phone: string;
+  item_id: number;
+  unit_id: number | null;
+  quantity: number;
+  status: LineStatus;
+  start: string;
+  end: string | null;
+  checked_out_at: string | null;
+  returned_at: string | null;
+  overdue: boolean;
+}
+
+export async function getRentalCalendar(from: string, to: string) {
+  const { branchId } = await activeContext();
+  return call<{ from: string; to: string; now: string; items: CalendarItem[]; bookings: CalendarBooking[] }>(
+    "rental_calendar",
+    { p_branch_id: branchId, p_from: from, p_to: to },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Báo cáo
+// ---------------------------------------------------------------------------
+export interface RevenueBreakdown {
+  rental: number;
+  late: number;
+  damage: number;
+  other: number;
+  reductions: number;
+  forfeited: number;
+  total: number;
+}
+export interface RentalReport {
+  from: string;
+  to: string;
+  bucket: "day" | "week" | "month";
+  revenue: number;
+  summary: RevenueBreakdown;
+  by_period: (RevenueBreakdown & { period: string })[];
+  revenue_by_type: Partial<Record<ChargeType, number>>;
+  contracts_created: number;
+  contracts_closed: number;
+  contracts_cancelled: number;
+  deposits: { received: number; applied: number; refunded: number; forfeited: number };
+  deposit_liability: number;
+  overdue: OverdueContract[];
+  utilization: {
+    item_id: number; item: string; tracking_mode: TrackingMode; capacity: number;
+    rented_hours: number; rentals: number; revenue: number; percent: number;
+  }[];
+}
+
 export async function getRentalReport(from: string, to: string) {
   const { branchId } = await activeContext();
-  return call<{
-    revenue: number; revenue_by_type: Partial<Record<ChargeType, number>>; contracts_closed: number;
-    deposit_liability: number;
-    overdue: { contract_id: number; code: string; customer: string; phone: string; item: string; due: string }[];
-    utilization: { item_id: number; item: string; percent: number }[];
-  }>("get_rental_report", { p_branch_id: branchId, p_from: from, p_to: to });
+  return call<RentalReport>("get_rental_report", { p_branch_id: branchId, p_from: from, p_to: to });
 }

@@ -3,10 +3,11 @@
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, CalendarClock, Plus, RefreshCw, Search } from "lucide-react";
+import { AlertTriangle, CalendarClock, CalendarDays, Plus, RefreshCw, Search } from "lucide-react";
 import ShiftButton from "@/components/ShiftButton";
 import { getRentalBoard, fmtTime, UNIT_STATUS_LABELS, type BoardUnit, type UnitStatus } from "@/utils/rental";
 import { errorText } from "@/components/Toaster";
+import OverdueAlert from "./_components/OverdueAlert";
 
 const STATUS_STYLE: Record<UnitStatus, string> = {
   available: "border-emerald-500/30 bg-emerald-500/5",
@@ -86,6 +87,12 @@ export default function RentalBoardPage() {
             <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} /> Làm mới
           </button>
           <Link
+            href="/rental/calendar"
+            className="flex items-center gap-1.5 rounded-xl border border-slate-800 px-3 py-2 text-xs text-slate-300 hover:bg-slate-900"
+          >
+            <CalendarDays className="h-4 w-4" /> Lịch
+          </Link>
+          <Link
             href="/rental/new"
             className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
           >
@@ -93,6 +100,8 @@ export default function RentalBoardPage() {
           </Link>
         </div>
       </div>
+
+      <OverdueAlert />
 
       <div className="flex flex-wrap items-center gap-2">
         {filters.map((f) => (

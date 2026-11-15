@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Plus, Search } from "lucide-react";
 import { listContracts, fmtTime, CONTRACT_STATUS_LABELS, type ContractStatus } from "@/utils/rental";
 import { errorText } from "@/components/Toaster";
+import OverdueAlert from "../_components/OverdueAlert";
 
 type Filter = "open" | ContractStatus | "all";
 const FILTERS: { key: Filter; label: string }[] = [
@@ -37,6 +38,8 @@ export default function ContractsPage() {
           <Plus className="h-4 w-4" /> Thuê mới
         </Link>
       </div>
+
+      <OverdueAlert />
 
       <div className="flex flex-wrap items-center gap-2">
         {FILTERS.map((f) => (

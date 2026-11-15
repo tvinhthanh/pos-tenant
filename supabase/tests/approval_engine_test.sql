@@ -79,7 +79,7 @@ grant execute on function pg_temp.expense(bigint) to authenticated;
 -- ---------------------------------------------------------------------------
 select is(
   (select count(*)::int from public.approval_rules where branch_id = (select branch_id from t_ctx)),
-  7, 'Tạo chi nhánh mới tự seed 7 ngưỡng duyệt (gồm giảm phí thuê, giữ cọc)'
+  8, 'Tạo chi nhánh mới tự seed 8 ngưỡng duyệt (gồm giảm phí thuê, giữ cọc, giảm giá tay)'
 );
 
 select is(app.check_approval_requirement((select branch_id from t_ctx), 'refund', 50000),

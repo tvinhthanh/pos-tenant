@@ -86,32 +86,144 @@ export async function saveGoods(input: GoodsInput) {
 // ---------------------------------------------------------------------------
 // Bán hàng
 // ---------------------------------------------------------------------------
+export type DiscountType = "amount" | "percentage";
+
 export interface CartLine {
   product_id: number;
   quantity: number;
+  /** Giảm tay theo dòng: amount = số tiền trên MỖI đơn vị, percentage = % đơn giá */
+  discount_type?: DiscountType;
+  discount_value?: number;
 }
 
+/** Xem trước giống app.plan_manual_discount (DB tính lại, không tin số này). */
+export function unitDiscount(price: number, type: DiscountType | undefined, value: number | undefined) {
+  const v = Number(value || 0);
+  if (!type || v <= 0) return 0;
+  return type === "percentage" ? Math.floor((price * Math.min(v, 100)) / 100) : Math.min(Math.floor(v), price);
+}
+export function orderDiscountAmount(subtotal: number, type: DiscountType | undefined, value: number | undefined) {
+  const v = Number(value || 0);
+  if (!type || v <= 0) return 0;
+  return type === "percentage" ? Math.floor((subtotal * Math.min(v, 100)) / 100) : Math.min(Math.floor(v), subtotal);
+}
+
+export type CheckoutResult =
+  | {
+      status?: "completed";
+      order_id: number;
+      total_amount?: number;
+      discount_amount?: number;
+      final_amount?: number;
+      manual_discount?: number;
+      decision?: string;
+      idempotent?: boolean;
+    }
+  | { status: "pending_approval"; request_id: number; required_level: "manager" | "owner"; amount: number };
+
+/** Bán hàng bán lẻ: giảm giá tay đi qua rule duyệt, Σ thanh toán = phải trả (DB kiểm). */
 export async function checkout(args: {
   lines: CartLine[];
   payments: { method: PayMethod; amount: number }[];
   customer_id?: number | null;
   voucher_code?: string | null;
+  order_discount?: { type: DiscountType; value: number } | null;
+  discount_reason?: string | null;
+  discount_request_id?: number | null;
   offline_ref: string;
 }) {
   const { branchId } = await activeContext();
-  return call<{ order_id: number; total_amount: number; discount_amount: number; final_amount: number }>(
-    "create_sales_order",
-    {
-      p_branch_id: branchId,
-      p_payload: {
-        items: args.lines,
-        payments: args.payments,
-        customer_id: args.customer_id || null,
-        voucher_code: args.voucher_code || null,
-        offline_ref: args.offline_ref,
-      },
+  return call<CheckoutResult>("create_retail_sale", {
+    p_branch_id: branchId,
+    p_payload: {
+      items: args.lines,
+      payments: args.payments,
+      customer_id: args.customer_id || null,
+      voucher_code: args.voucher_code || null,
+      order_discount: args.order_discount || null,
+      discount_reason: args.discount_reason || null,
+      discount_request_id: args.discount_request_id || null,
+      offline_ref: args.offline_ref,
     },
-  );
+  });
+}
+
+export interface Approver {
+  id: string;
+  name: string;
+  role: "manager" | "owner";
+}
+
+export async function listDiscountApprovers(): Promise<Approver[]> {
+  const { branchId } = await activeContext();
+  return (await call<Approver[]>("list_discount_approvers", { p_branch_id: branchId })) || [];
+}
+
+export const approveDiscountWithPin = (requestId: number, approverId: string, pin: string) =>
+  call<{ ok: boolean; attempts_left?: number; locked_until?: string | null; status?: string }>(
+    "approve_discount_with_pin", { p_request_id: requestId, p_approver_id: approverId, p_pin: pin });
+
+export async function getApprovalStatus(requestId: number): Promise<string | null> {
+  const { data, error } = await supabase.from("approval_requests").select("status").eq("id", requestId).maybeSingle();
+  if (error) toApiError(error);
+  return (data?.status as string) ?? null;
+}
+
+export interface PendingApproval {
+  id: number;
+  entity_type: "refund" | "manual_discount" | string;
+  entity_id: number | null;
+  note: string | null;
+  created_at: string;
+  details: { required_level?: "manager" | "owner"; value?: number; payload?: Record<string, any> };
+}
+
+/** Yêu cầu chờ duyệt của shop: trả hàng / đổi hàng (refund) và giảm giá tay. */
+export async function listPendingRetailApprovals(): Promise<PendingApproval[]> {
+  const { branchId } = await activeContext();
+  const { data, error } = await supabase
+    .from("approval_requests")
+    .select("id, entity_type, entity_id, note, created_at, details")
+    .eq("branch_id", branchId)
+    .eq("status", "pending")
+    .in("entity_type", ["refund", "manual_discount"])
+    .order("id", { ascending: false })
+    .limit(30);
+  if (error) toApiError(error);
+  return (data || []) as PendingApproval[];
+}
+
+export const resolveRetailApproval = (requestId: number, approve: boolean) =>
+  call<{ status: string }>("resolve_approval_request", { p_request_id: requestId, p_approve: approve, p_note: null });
+
+// ---------------------------------------------------------------------------
+// Đổi hàng một bước
+// ---------------------------------------------------------------------------
+export interface ExchangePayload {
+  order_id: number;
+  reason: string;
+  return_lines: { order_item_id: number; quantity: number; condition: ReturnCondition }[];
+  items: { product_id: number; quantity: number }[];
+  payments?: { method: PayMethod; amount: number }[];
+  offline_ref?: string;
+}
+
+export async function previewExchange(payload: Omit<ExchangePayload, "reason" | "payments" | "offline_ref">) {
+  const { branchId } = await activeContext();
+  return call<{ return_amount: number; sale_amount: number; difference: number; decision: string }>(
+    "preview_goods_exchange", { p_branch_id: branchId, p_payload: payload });
+}
+
+export type ExchangeResult =
+  | {
+      status: "executed"; exchange_id: number; code: string; return_code: string; new_order_id: number;
+      return_amount: number; sale_amount: number; difference: number; decision?: string;
+    }
+  | { status: "pending_approval"; request_id: number; required_level: string; amount: number };
+
+export async function exchangeGoods(payload: ExchangePayload) {
+  const { branchId } = await activeContext();
+  return call<ExchangeResult>("exchange_goods", { p_branch_id: branchId, p_payload: payload });
 }
 
 export const newCheckoutRef = () => newLocalId("RTL");

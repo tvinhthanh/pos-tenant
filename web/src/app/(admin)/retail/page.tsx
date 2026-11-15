@@ -1,21 +1,38 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Minus, Plus, ScanLine, Search, Trash2, UserRound, X } from "lucide-react";
+import { AlertTriangle, BadgePercent, Minus, Plus, ScanLine, Search, Trash2, UserRound, X } from "lucide-react";
 import { supabase, activeContext } from "@/utils/api";
 import ShiftButton, { useShiftOpen } from "@/components/ShiftButton";
 import ReceiptModal, { type ReceiptData } from "@/components/ReceiptModal";
 import { errorText, toast } from "@/components/Toaster";
+import { NumberInput } from "@/components/RetailUi";
 import {
-  checkout, findByCode, findCustomer, getCatalog, newCheckoutRef, vnd, qty as fmtQty,
-  PAY_METHOD_LABELS, type CustomerHit, type Goods, type PayMethod,
+  DiscountApprovalModal, PaymentBox, payLabel, paymentReady, resolvePayments, type PayRow,
+} from "@/components/RetailCheckout";
+import {
+  checkout, findByCode, findCustomer, getCatalog, newCheckoutRef, orderDiscountAmount, unitDiscount, vnd, qty as fmtQty,
+  type CustomerHit, type DiscountType, type Goods,
 } from "@/utils/retail";
 
-type Line = { goods: Goods; quantity: number };
+type Line = { goods: Goods; quantity: number; dType: DiscountType; dValue: number | ""; dOpen?: boolean };
 type Voucher = { code: string; discount_type: "amount" | "percentage"; value: number; min_order_value: number };
+type Pending = { request_id: number; required_level: "manager" | "owner"; amount: number };
 
-const METHODS: PayMethod[] = ["cash", "bank_transfer", "card", "momo"];
+/** Nút chọn kiểu giảm: số tiền / phần trăm */
+function TypeToggle({ value, onChange, amountLabel = "đ" }: { value: DiscountType; onChange: (t: DiscountType) => void; amountLabel?: string }) {
+  return (
+    <div className="flex shrink-0 overflow-hidden rounded-lg border border-slate-800 text-xs" role="radiogroup" aria-label="Kiểu giảm giá">
+      {(["amount", "percentage"] as DiscountType[]).map((t) => (
+        <button key={t} role="radio" aria-checked={value === t} onClick={() => onChange(t)}
+          className={`px-2 py-1 ${value === t ? "bg-indigo-500/15 text-indigo-500" : "text-slate-400"}`}>
+          {t === "amount" ? amountLabel : "%"}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export default function RetailPosPage() {
   const qc = useQueryClient();
@@ -23,12 +40,17 @@ export default function RetailPosPage() {
   const scanRef = useRef<HTMLInputElement>(null);
   const [term, setTerm] = useState("");
   const [lines, setLines] = useState<Line[]>([]);
-  const [method, setMethod] = useState<PayMethod>("cash");
+  const [payRows, setPayRows] = useState<PayRow[]>([{ method: "cash", amount: "" }]);
   const [given, setGiven] = useState<number | "">("");
   const [phone, setPhone] = useState("");
   const [customer, setCustomer] = useState<CustomerHit | null>(null);
   const [voucherCode, setVoucherCode] = useState("");
   const [voucher, setVoucher] = useState<Voucher | null>(null);
+  const [orderDType, setOrderDType] = useState<DiscountType>("amount");
+  const [orderDValue, setOrderDValue] = useState<number | "">("");
+  const [discountReason, setDiscountReason] = useState("");
+  const [pending, setPending] = useState<Pending | null>(null);
+  const [approvedRequest, setApprovedRequest] = useState<number | null>(null);
   const [receipt, setReceipt] = useState<ReceiptData | null>(null);
   const [notice, setNotice] = useState("");
   // Một mã cho mỗi lượt thanh toán: bấm lại khi mạng chập chờn không tạo đơn trùng
@@ -53,11 +75,12 @@ export default function RetailPosPage() {
       const next = i >= 0 ? ls[i].quantity + n : n;
       if (next > g.stock) setNotice(`"${g.name}" chỉ còn ${fmtQty(g.stock)} ${g.unit} trong kho.`);
       if (i >= 0) return ls.map((l, j) => (j === i ? { ...l, quantity: next } : l));
-      return [...ls, { goods: g, quantity: n }];
+      return [...ls, { goods: g, quantity: n, dType: "percentage", dValue: "" }];
     });
   };
   const setQty = (id: number, n: number) =>
     setLines((ls) => (n <= 0 ? ls.filter((l) => l.goods.id !== id) : ls.map((l) => (l.goods.id === id ? { ...l, quantity: n } : l))));
+  const patchLine = (id: number, patch: Partial<Line>) => setLines((ls) => ls.map((l) => (l.goods.id === id ? { ...l, ...patch } : l)));
 
   // Máy quét gõ mã rồi Enter. Khớp mã vạch / SKU → thêm ngay; không khớp thì giữ lại để tìm theo tên.
   const onScan = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -74,14 +97,23 @@ export default function RetailPosPage() {
     }
   };
 
-  const subtotal = lines.reduce((s, l) => s + l.goods.price * l.quantity, 0);
-  // Xem trước giảm giá giống công thức trong create_sales_order; DB tính lại và đối chiếu
-  const discount = !voucher || subtotal < voucher.min_order_value ? 0
+  // ---- Xem trước giống DB (create_retail_sale tính lại và đối chiếu) ----
+  const unitOf = (l: Line) => l.goods.price - unitDiscount(l.goods.price, l.dType, Number(l.dValue || 0));
+  const listTotal = lines.reduce((s, l) => s + l.goods.price * l.quantity, 0);
+  const lineDiscount = lines.reduce((s, l) => s + (l.goods.price - unitOf(l)) * l.quantity, 0);
+  const subtotal = listTotal - lineDiscount;
+  const orderDiscount = orderDiscountAmount(subtotal, orderDType, Number(orderDValue || 0));
+  const manualDiscount = lineDiscount + orderDiscount;
+  const voucherDiscount = !voucher || subtotal < voucher.min_order_value ? 0
     : voucher.discount_type === "amount" ? Math.min(voucher.value, subtotal)
       : Math.floor((subtotal * voucher.value) / 100);
-  const total = subtotal - Math.min(discount, subtotal);
-  const change = method === "cash" && given !== "" ? Number(given) - total : 0;
+  const discount = Math.min(voucherDiscount + orderDiscount, subtotal);
+  const total = subtotal - discount;
   const overStock = lines.some((l) => l.quantity > l.goods.stock);
+
+  // Giỏ hoặc mức giảm đổi → phiếu đã duyệt không còn khớp
+  const cartKey = JSON.stringify([lines.map((l) => [l.goods.id, l.quantity, l.dType, l.dValue]), orderDType, orderDValue]);
+  useEffect(() => { setApprovedRequest(null); }, [cartKey]);
 
   const lookupCustomer = async () => {
     setCustomer(null);
@@ -111,29 +143,45 @@ export default function RetailPosPage() {
     else setVoucher(data as Voucher);
   };
 
+  const resetCart = () => {
+    setLines([]); setGiven(""); setVoucher(null); setVoucherCode(""); setCustomer(null); setPhone(""); setNotice("");
+    setOrderDValue(""); setDiscountReason(""); setPayRows([{ method: payRows[0]?.method ?? "cash", amount: "" }]);
+    setApprovedRequest(null); setPending(null);
+    refRef.current = newCheckoutRef();
+  };
+
   const pay = useMutation({
-    mutationFn: () =>
+    mutationFn: (requestId?: number | null) =>
       checkout({
-        lines: lines.map((l) => ({ product_id: l.goods.id, quantity: l.quantity })),
-        payments: total > 0 ? [{ method, amount: total }] : [],
+        lines: lines.map((l) => ({
+          product_id: l.goods.id, quantity: l.quantity,
+          ...(Number(l.dValue) > 0 ? { discount_type: l.dType, discount_value: Number(l.dValue) } : {}),
+        })),
+        payments: resolvePayments(payRows, total),
         customer_id: customer?.id,
         voucher_code: voucher?.code,
+        order_discount: Number(orderDValue) > 0 ? { type: orderDType, value: Number(orderDValue) } : null,
+        discount_reason: manualDiscount > 0 ? discountReason.trim() : null,
+        discount_request_id: requestId ?? approvedRequest,
         offline_ref: refRef.current,
       }),
     onSuccess: (res) => {
+      if (res.status === "pending_approval") {
+        setPending({ request_id: res.request_id, required_level: res.required_level, amount: res.amount });
+        return;
+      }
       setReceipt({
         id: res.order_id,
         date: new Date().toISOString(),
         customer_name: customer?.name || "Khách lẻ",
         // Bấm lại sau lỗi mạng: DB trả đơn đã ghi trước đó (idempotent), không kèm số tiền
         total_amount: res.total_amount ?? subtotal,
-        discount_amount: res.discount_amount ?? subtotal - total,
+        discount_amount: res.discount_amount ?? discount,
         final_amount: res.final_amount ?? total,
-        payment_method: PAY_METHOD_LABELS[method],
-        items: lines.map((l) => ({ product_name: l.goods.name, quantity: l.quantity, price: l.goods.price })),
+        payment_method: payLabel(payRows, total),
+        items: lines.map((l) => ({ product_name: l.goods.name, quantity: l.quantity, price: unitOf(l) })),
       });
-      setLines([]); setGiven(""); setVoucher(null); setVoucherCode(""); setCustomer(null); setPhone(""); setNotice("");
-      refRef.current = newCheckoutRef();
+      resetCart();
       qc.invalidateQueries({ queryKey: ["retailCatalog"] });
       qc.invalidateQueries({ queryKey: ["currentShift"] });
     },
@@ -146,12 +194,21 @@ export default function RetailPosPage() {
     },
   });
 
-  const canPay = shiftOpen && lines.length > 0 && !pay.isPending && (method !== "cash" || given === "" || change >= 0);
+  const onApproved = useCallback(() => {
+    if (!pending) return;
+    const id = pending.request_id;
+    setPending(null);
+    setApprovedRequest(id);
+    pay.mutate(id);
+  }, [pending, pay]);
+
+  const needReason = manualDiscount > 0 && !discountReason.trim();
+  const canPay = shiftOpen && lines.length > 0 && !pay.isPending && !needReason && paymentReady(payRows, total, given);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "F2") { e.preventDefault(); scanRef.current?.focus(); }
-      if (e.key === "F9" && canPay) { e.preventDefault(); pay.mutate(); }
+      if (e.key === "F9" && canPay) { e.preventDefault(); pay.mutate(undefined); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -218,35 +275,54 @@ export default function RetailPosPage() {
           <p className="rounded-xl border border-dashed border-slate-800 p-6 text-center text-sm text-slate-500">Quét mã để thêm hàng.</p>
         ) : (
           <ul className="divide-y divide-slate-800">
-            {lines.map((l) => (
-              <li key={l.goods.id} className="py-2.5">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-sm text-slate-200">{l.goods.name}</p>
-                  <button onClick={() => setQty(l.goods.id, 0)} aria-label={`Bỏ ${l.goods.name}`} className="text-slate-500 hover:text-rose-500">
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-                <div className="mt-1.5 flex items-center justify-between">
-                  <div className="flex items-center gap-1">
-                    <button onClick={() => setQty(l.goods.id, l.quantity - 1)} aria-label="Bớt" className="rounded-lg border border-slate-800 p-1 text-slate-300 hover:bg-slate-800"><Minus className="h-3.5 w-3.5" /></button>
-                    <input
-                      value={l.quantity}
-                      onChange={(e) => setQty(l.goods.id, Math.max(0, Math.floor(Number(e.target.value) || 0)))}
-                      inputMode="numeric"
-                      aria-label={`Số lượng ${l.goods.name}`}
-                      className={`w-12 rounded-lg border bg-slate-950 py-1 text-center text-sm tabular-nums text-slate-100 ${l.quantity > l.goods.stock ? "border-rose-500" : "border-slate-800"}`}
-                    />
-                    <button onClick={() => add(l.goods)} aria-label="Thêm" className="rounded-lg border border-slate-800 p-1 text-slate-300 hover:bg-slate-800"><Plus className="h-3.5 w-3.5" /></button>
-                    <span className="ml-1 text-xs text-slate-500">× {vnd(l.goods.price)}</span>
+            {lines.map((l) => {
+              const unit = unitOf(l);
+              return (
+                <li key={l.goods.id} className="py-2.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-sm text-slate-200">{l.goods.name}</p>
+                    <div className="flex shrink-0 gap-1.5">
+                      <button onClick={() => patchLine(l.goods.id, { dOpen: !l.dOpen })} title="Giảm giá dòng này" aria-label={`Giảm giá ${l.goods.name}`}
+                        className={unit < l.goods.price ? "text-emerald-500" : "text-slate-500 hover:text-indigo-500"}>
+                        <BadgePercent className="h-4 w-4" />
+                      </button>
+                      <button onClick={() => setQty(l.goods.id, 0)} aria-label={`Bỏ ${l.goods.name}`} className="text-slate-500 hover:text-rose-500">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
-                  <span className="text-sm font-semibold tabular-nums text-slate-100">{vnd(l.goods.price * l.quantity)}</span>
-                </div>
-              </li>
-            ))}
+                  <div className="mt-1.5 flex items-center justify-between">
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => setQty(l.goods.id, l.quantity - 1)} aria-label="Bớt" className="rounded-lg border border-slate-800 p-1 text-slate-300 hover:bg-slate-800"><Minus className="h-3.5 w-3.5" /></button>
+                      <input
+                        value={l.quantity}
+                        onChange={(e) => setQty(l.goods.id, Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+                        inputMode="numeric"
+                        aria-label={`Số lượng ${l.goods.name}`}
+                        className={`w-12 rounded-lg border bg-slate-950 py-1 text-center text-sm tabular-nums text-slate-100 ${l.quantity > l.goods.stock ? "border-rose-500" : "border-slate-800"}`}
+                      />
+                      <button onClick={() => add(l.goods)} aria-label="Thêm" className="rounded-lg border border-slate-800 p-1 text-slate-300 hover:bg-slate-800"><Plus className="h-3.5 w-3.5" /></button>
+                      <span className="ml-1 text-xs text-slate-500">
+                        × {unit < l.goods.price ? <><s>{vnd(l.goods.price)}</s> <span className="text-emerald-500">{vnd(unit)}</span></> : vnd(l.goods.price)}
+                      </span>
+                    </div>
+                    <span className="text-sm font-semibold tabular-nums text-slate-100">{vnd(unit * l.quantity)}</span>
+                  </div>
+                  {l.dOpen && (
+                    <div className="mt-2 flex items-center gap-1.5">
+                      <span className="text-xs text-slate-500">Giảm</span>
+                      <TypeToggle value={l.dType} onChange={(t) => patchLine(l.goods.id, { dType: t })} amountLabel="đ / đv" />
+                      <NumberInput value={l.dValue} onChange={(v) => patchLine(l.goods.id, { dValue: v })}
+                        placeholder={l.dType === "percentage" ? "%" : "đ mỗi đơn vị"} aria-label={`Mức giảm ${l.goods.name}`} className="py-1" />
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
 
-        {/* Khách & voucher */}
+        {/* Khách & voucher & giảm tay */}
         <div className="space-y-2 border-t border-slate-800 pt-3">
           {customer ? (
             <div className="flex items-center justify-between rounded-xl bg-indigo-500/10 px-3 py-2 text-sm">
@@ -271,46 +347,36 @@ export default function RetailPosPage() {
           {voucher && subtotal < voucher.min_order_value && (
             <p className="text-xs text-amber-600">Mã {voucher.code} cần đơn từ {vnd(voucher.min_order_value)}.</p>
           )}
+          <div className="flex items-center gap-1.5">
+            <span className="shrink-0 text-xs text-slate-400">Giảm cả đơn</span>
+            <TypeToggle value={orderDType} onChange={setOrderDType} />
+            <NumberInput value={orderDValue} onChange={setOrderDValue} placeholder={orderDType === "percentage" ? "%" : "Số tiền"}
+              aria-label="Giảm giá cả đơn" className="py-1.5" />
+          </div>
+          {manualDiscount > 0 && (
+            <input value={discountReason} onChange={(e) => setDiscountReason(e.target.value)} placeholder="Lý do giảm giá (bắt buộc)"
+              aria-label="Lý do giảm giá"
+              className={`w-full rounded-xl border bg-slate-950 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-indigo-500 focus:outline-none ${needReason ? "border-amber-500/60" : "border-slate-800"}`} />
+          )}
+          {approvedRequest && <p className="text-xs text-emerald-500">Giảm giá đã được duyệt (yêu cầu #{approvedRequest}).</p>}
         </div>
 
         {/* Tổng */}
         <dl className="space-y-1 border-t border-slate-800 pt-3 text-sm">
-          <div className="flex justify-between text-slate-400"><dt>Tiền hàng</dt><dd className="tabular-nums">{vnd(subtotal)}</dd></div>
-          {discount > 0 && <div className="flex justify-between text-emerald-500"><dt>Giảm giá</dt><dd className="tabular-nums">−{vnd(discount)}</dd></div>}
+          <div className="flex justify-between text-slate-400"><dt>Tiền hàng</dt><dd className="tabular-nums">{vnd(listTotal)}</dd></div>
+          {lineDiscount > 0 && <div className="flex justify-between text-emerald-500"><dt>Giảm theo món</dt><dd className="tabular-nums">−{vnd(lineDiscount)}</dd></div>}
+          {orderDiscount > 0 && <div className="flex justify-between text-emerald-500"><dt>Giảm cả đơn</dt><dd className="tabular-nums">−{vnd(orderDiscount)}</dd></div>}
+          {voucherDiscount > 0 && <div className="flex justify-between text-emerald-500"><dt>Voucher</dt><dd className="tabular-nums">−{vnd(Math.min(voucherDiscount, subtotal - orderDiscount))}</dd></div>}
           <div className="flex justify-between text-lg font-bold text-slate-100"><dt>Khách trả</dt><dd className="tabular-nums">{vnd(total)}</dd></div>
         </dl>
 
         {/* Thanh toán */}
-        <div className="grid grid-cols-4 gap-1.5" role="radiogroup" aria-label="Phương thức thanh toán">
-          {METHODS.map((m) => (
-            <button key={m} role="radio" aria-checked={method === m} onClick={() => setMethod(m)}
-              className={`rounded-xl border px-1 py-2 text-xs font-medium ${method === m ? "border-indigo-500 bg-indigo-500/10 text-indigo-500" : "border-slate-800 text-slate-400"}`}>
-              {PAY_METHOD_LABELS[m]}
-            </button>
-          ))}
-        </div>
-        {method === "cash" && total > 0 && (
-          <div className="space-y-2">
-            <input value={given} onChange={(e) => setGiven(e.target.value === "" ? "" : Math.max(0, Number(e.target.value.replace(/\D/g, ""))))}
-              inputMode="numeric" placeholder="Khách đưa" aria-label="Tiền khách đưa"
-              className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-right text-base tabular-nums text-slate-100 placeholder-slate-500 focus:border-indigo-500 focus:outline-none" />
-            <div className="flex flex-wrap gap-1.5">
-              {[total, ...[50000, 100000, 200000, 500000].filter((v) => v > total)].slice(0, 4).map((v) => (
-                <button key={v} onClick={() => setGiven(v)} className="rounded-lg border border-slate-800 px-2 py-1 text-xs tabular-nums text-slate-300 hover:bg-slate-800">{vnd(v)}</button>
-              ))}
-            </div>
-            {given !== "" && (
-              <p className={`flex justify-between text-sm font-semibold ${change < 0 ? "text-rose-500" : "text-emerald-500"}`}>
-                <span>{change < 0 ? "Còn thiếu" : "Tiền thối"}</span><span className="tabular-nums">{vnd(Math.abs(change))}</span>
-              </p>
-            )}
-          </div>
-        )}
+        <PaymentBox total={total} rows={payRows} setRows={setPayRows} given={given} setGiven={setGiven} />
 
         {overStock && <p className="text-xs text-amber-600">Có món vượt tồn kho — hệ thống sẽ từ chối nếu kho thực sự không đủ.</p>}
 
         <button
-          onClick={() => pay.mutate()}
+          onClick={() => pay.mutate(undefined)}
           disabled={!canPay}
           className="rounded-2xl bg-indigo-600 py-3.5 text-base font-bold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
         >
@@ -318,6 +384,7 @@ export default function RetailPosPage() {
         </button>
       </aside>
 
+      {pending && <DiscountApprovalModal request={pending} onApproved={onApproved} onClose={() => setPending(null)} />}
       <ReceiptModal isOpen={Boolean(receipt)} onClose={() => { setReceipt(null); scanRef.current?.focus(); }} order={receipt} />
     </div>
   );

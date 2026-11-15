@@ -2,11 +2,13 @@
 
 import React, { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, Search, Tag } from "lucide-react";
-import { changeProductPrice } from "@/utils/rpc";
+import { Barcode, Pencil, Plus, Printer, Search, Tag, Trash2 } from "lucide-react";
+import { changeProductPrice, getBranchProfile } from "@/utils/rpc";
 import { getCatalog, saveGoods, vnd, qty, type Goods, type GoodsInput } from "@/utils/retail";
+import { code128Svg, isEncodable, labelsHtml, LABEL_SIZES, type LabelSize } from "@/utils/barcode";
+import { printHtml } from "@/utils/printer";
 import { errorText, toast } from "@/components/Toaster";
-import { ErrorLine, Field, Modal, NumberInput, PageHead, inputCls } from "@/components/RetailUi";
+import { ErrorLine, Field, GoodsPicker, Modal, NumberInput, PageHead, inputCls } from "@/components/RetailUi";
 
 type Filter = "active" | "low" | "inactive";
 
@@ -15,6 +17,7 @@ export default function RetailProductsPage() {
   const [term, setTerm] = useState("");
   const [editing, setEditing] = useState<Goods | "new" | null>(null);
   const [pricing, setPricing] = useState<Goods | null>(null);
+  const [labels, setLabels] = useState<Goods[] | null>(null);
 
   const { data = [], isLoading, error } = useQuery({ queryKey: ["retailCatalog", "all"], queryFn: () => getCatalog(true) });
 
@@ -35,6 +38,10 @@ export default function RetailProductsPage() {
   return (
     <div className="space-y-6">
       <PageHead title="Sản phẩm" sub="Giá vốn bình quân tự cập nhật khi nhập hàng. Đổi giá bán đi qua duyệt.">
+        <button onClick={() => setLabels([])}
+          className="flex items-center gap-1.5 rounded-xl border border-slate-800 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-800">
+          <Printer className="h-4 w-4" /> In tem mã vạch
+        </button>
         <button onClick={() => setEditing("new")}
           className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">
           <Plus className="h-4 w-4" /> Thêm sản phẩm
@@ -103,6 +110,8 @@ export default function RetailProductsPage() {
                     </td>
                     <td className="px-4 py-2.5">
                       <div className="flex justify-end gap-1">
+                        <button onClick={() => setLabels([g])} disabled={!g.is_active} title="In tem mã vạch" aria-label={`In tem ${g.name}`}
+                          className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-slate-100 disabled:opacity-40"><Barcode className="h-4 w-4" /></button>
                         <button onClick={() => setPricing(g)} disabled={!g.is_active} title="Đổi giá bán" aria-label={`Đổi giá ${g.name}`}
                           className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-slate-100 disabled:opacity-40"><Tag className="h-4 w-4" /></button>
                         <button onClick={() => setEditing(g)} title="Sửa" aria-label={`Sửa ${g.name}`}
@@ -122,7 +131,97 @@ export default function RetailProductsPage() {
 
       {editing && <GoodsDialog goods={editing === "new" ? null : editing} onClose={() => setEditing(null)} />}
       {pricing && <PriceDialog goods={pricing} onClose={() => setPricing(null)} />}
+      {labels && <LabelDialog initial={labels} catalog={active} onClose={() => setLabels(null)} />}
     </div>
+  );
+}
+
+/** Mã in trên tem: mã vạch của sản phẩm, không có thì SKU (máy quét ở màn Bán hàng nhận cả hai). */
+const labelCode = (g: Goods) => g.barcode || g.sku || "";
+
+function LabelDialog({ initial, catalog, onClose }: { initial: Goods[]; catalog: Goods[]; onClose: () => void }) {
+  const [rows, setRows] = useState(() => initial.map((g) => ({ goods: g, copies: 1 as number | "" })));
+  const [size, setSize] = useState<LabelSize>("50x30");
+  const [showPrice, setShowPrice] = useState(true);
+  const [showShop, setShowShop] = useState(true);
+  const { data: profile } = useQuery({ queryKey: ["branchProfile"], queryFn: getBranchProfile });
+  const shopName = profile?.receipt_name || profile?.organization_name || "";
+
+  const add = (g: Goods) =>
+    setRows((rs) => (rs.some((r) => r.goods.id === g.id)
+      ? rs.map((r) => (r.goods.id === g.id ? { ...r, copies: Number(r.copies || 0) + 1 } : r))
+      : [...rs, { goods: g, copies: 1 }]));
+  const printable = rows.filter((r) => isEncodable(labelCode(r.goods)) && Number(r.copies) > 0);
+  const missing = rows.filter((r) => !isEncodable(labelCode(r.goods)));
+  const totalCopies = printable.reduce((s, r) => s + Number(r.copies), 0);
+  const first = printable[0]?.goods;
+
+  const print = () => {
+    printHtml(labelsHtml(
+      printable.map((r) => ({ name: r.goods.name, price: r.goods.price, code: labelCode(r.goods), copies: Number(r.copies) })),
+      size, { showPrice, shopName: showShop ? shopName : undefined }));
+  };
+
+  return (
+    <Modal title="In tem mã vạch" onClose={onClose} wide>
+      <GoodsPicker catalog={catalog} onPick={add} placeholder="Quét mã hoặc gõ tên sản phẩm cần in tem" />
+      {rows.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-slate-800 p-6 text-center text-sm text-slate-500">Chọn sản phẩm cần in tem.</p>
+      ) : (
+        <ul className="max-h-64 divide-y divide-slate-800 overflow-y-auto rounded-xl border border-slate-800">
+          {rows.map((r) => (
+            <li key={r.goods.id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+              <span className="min-w-0 text-slate-200">
+                <span className="block truncate">{r.goods.name}</span>
+                <span className={`font-mono text-xs ${labelCode(r.goods) ? "text-slate-500" : "text-rose-500"}`}>
+                  {labelCode(r.goods) || "Chưa có mã vạch / SKU — sửa sản phẩm để thêm mã"} · {vnd(r.goods.price)}
+                </span>
+              </span>
+              <span className="flex shrink-0 items-center gap-1.5">
+                <span className="text-xs text-slate-500">Số tem</span>
+                <NumberInput value={r.copies} onChange={(v) => setRows((rs) => rs.map((x) => (x.goods.id === r.goods.id ? { ...x, copies: v } : x)))}
+                  aria-label={`Số tem ${r.goods.name}`} className="w-16 py-1" />
+                <button onClick={() => setRows((rs) => rs.filter((x) => x.goods.id !== r.goods.id))} aria-label={`Bỏ ${r.goods.name}`}
+                  className="text-slate-500 hover:text-rose-500"><Trash2 className="h-4 w-4" /></button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Khổ tem">
+          <select value={size} onChange={(e) => setSize(e.target.value as LabelSize)} className={inputCls}>
+            {(Object.keys(LABEL_SIZES) as LabelSize[]).map((k) => <option key={k} value={k}>{LABEL_SIZES[k].label}</option>)}
+          </select>
+        </Field>
+        <div className="flex flex-col justify-end gap-1.5 pb-1 text-sm text-slate-300">
+          <label className="flex items-center gap-2"><input type="checkbox" checked={showPrice} onChange={(e) => setShowPrice(e.target.checked)} className="h-4 w-4 accent-indigo-500" /> In giá bán</label>
+          <label className="flex items-center gap-2"><input type="checkbox" checked={showShop} onChange={(e) => setShowShop(e.target.checked)} className="h-4 w-4 accent-indigo-500" /> In tên cửa hàng{shopName ? ` (${shopName})` : ""}</label>
+        </div>
+      </div>
+
+      {first && (
+        <div className="flex items-center gap-4 rounded-xl border border-slate-800 bg-white p-3 text-black">
+          <div className="w-48 text-center">
+            <p className="truncate text-xs">{first.name}</p>
+            {showPrice && <p className="text-sm font-bold">{vnd(first.price)}</p>}
+            <div className="h-10" dangerouslySetInnerHTML={{ __html: code128Svg(labelCode(first)).replace("<svg ", '<svg style="width:100%;height:100%" ') }} />
+            <p className="font-mono text-[10px]">{labelCode(first)}</p>
+          </div>
+          <p className="text-xs text-slate-600">Xem trước tem đầu tiên. Máy in tem: chọn đúng khổ giấy trong hộp thoại in, lề = 0.</p>
+        </div>
+      )}
+
+      {missing.length > 0 && <p className="text-xs text-amber-600">{missing.length} sản phẩm chưa có mã in được sẽ bị bỏ qua.</p>}
+      <div className="flex justify-end gap-2">
+        <button onClick={onClose} className="rounded-xl border border-slate-800 px-4 py-2 text-sm text-slate-300">Đóng</button>
+        <button onClick={print} disabled={totalCopies === 0}
+          className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50">
+          <Printer className="h-4 w-4" /> In {totalCopies} tem
+        </button>
+      </div>
+    </Modal>
   );
 }
 

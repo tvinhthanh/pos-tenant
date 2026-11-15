@@ -87,21 +87,79 @@ Thứ tự khóa cùng chiều với RPC sẵn có (không deadlock):
 
 | Đường dẫn | Ai dùng | Nội dung |
 |---|---|---|
-| `/retail` | Thu ngân | Quét mã vạch / SKU (Enter), giỏ hàng, khách tích điểm, voucher, tiền thối, F2 / F9, in bill |
-| `/retail/returns` | Thu ngân | Tìm hóa đơn → chọn số trả + tình trạng → hoàn tiền / gửi duyệt |
+| `/retail` | Thu ngân | Quét mã vạch / SKU (Enter), giỏ hàng, khách tích điểm, voucher, giảm giá tay (dòng / đơn, duyệt PIN), tách thanh toán, tiền thối, F2 / F9, in bill |
+| `/retail/returns` | Thu ngân | Tìm hóa đơn → chọn số trả + tình trạng → hoàn tiền / gửi duyệt; chế độ Đổi hàng; quản lý duyệt yêu cầu |
 | `/retail/stocktake` | Thu ngân | Quét để đếm, xem chênh lệch và giá trị ngay |
-| `/retail/products` | Quản lý | Thêm (kèm tồn đầu kỳ), sửa, ngừng bán, đổi giá (qua duyệt), biên lãi |
+| `/retail/products` | Quản lý | Thêm (kèm tồn đầu kỳ), sửa, ngừng bán, đổi giá (qua duyệt), biên lãi, in tem mã vạch |
 | `/retail/receive` | Quản lý | Phiếu nhập theo mã quét, trả một phần → công nợ NCC |
 | `/retail/report` | Quản lý | Doanh thu thuần, lãi gộp, tiền hoàn, giá trị tồn, bán chạy, sắp hết |
 
 Shop bán lẻ không còn thấy POS / Thực đơn / Kho định lượng của F&B. Vẫn dùng chung
 Điều chỉnh kho (duyệt phiếu kiểm kê), Công nợ & NCC, Sổ quỹ, Báo cáo & Thuế, Lịch sử ca.
 
-## 7. Chưa làm
+## 7. Bán lẻ nâng cao (2026-11-15)
+
+Migration `20261123000050_retail_advanced_enums`, `20261123000100_retail_advanced_schema`,
+`20261123000200_retail_advanced_rpc`; test `supabase/tests/retail_advanced_test.sql` (55 test).
+
+### 7.1 Tách thanh toán
+
+Màn `/retail` bán qua `create_retail_sale` (bọc `create_sales_order`). Một phương thức hoặc bấm
+**Tách thanh toán** để chia nhiều khoản; nút **Còn lại** điền phần thiếu, tiền thối chỉ tính trên
+phần tiền mặt. DB kiểm Σ khoản = phải trả (lõi bán hàng) và từng khoản là số nguyên > 0.
+
+### 7.2 Giảm giá tay — rule `manual_discount`
+
+- **Theo dòng**: số tiền trên *mỗi đơn vị* hoặc % đơn giá (làm tròn xuống từng đơn vị). Đơn giá sau
+  giảm ghi thẳng vào `sales_order_items.unit_price_snapshot` → trả hàng hoàn đúng giá khách đã trả
+  cho chính món đó. **Theo đơn**: số tiền / % trên tiền hàng sau giảm dòng, cộng vào
+  `sales_orders.discount_amount` (trả hàng phân bổ theo tỉ lệ như voucher).
+- Client chỉ gửi *mức giảm*; DB tính lại số tiền từ giá hiện hành (`app.plan_manual_discount`) rồi
+  truyền cho `create_sales_order` qua cờ transaction-local `app.manual_discount` (PostgREST không đặt
+  được). Gọi thẳng `create_sales_order` kèm mức giảm thì bị bỏ qua.
+- Bắt buộc lý do. Mọi lần giảm ghi sổ append-only `sales_order_discounts` (giá gốc, SL, số tiền,
+  mức duyệt, phiếu duyệt, người duyệt).
+- Ngưỡng mặc định (trigger riêng `branches_seed_manual_discount_rule`, không sửa hàm seed chung):
+  < 20.000đ tự áp · 20.000–49.999đ tự áp + `ManualDiscountAlert` · ≥ 50.000đ quản lý · ≥ 1.000.000đ chủ.
+- Vượt thẩm quyền → `approval_requests(entity_type = 'manual_discount')` mang **dấu vân tay giỏ hàng**
+  (sản phẩm, SL, tùy chọn, giá gốc, giá sau giảm, giảm theo đơn). Gửi lại đúng giỏ thì dùng lại phiếu
+  đang chờ. Phiếu được **duyệt** (`approved`) chứ không tự chạy — đơn chưa thu tiền. Thu ngân gửi lại
+  kèm `discount_request_id`; DB so dấu vân tay, người gửi, hạn 2 giờ rồi đánh dấu `executed` + `order_id`.
+  Một phiếu chỉ dùng cho một hóa đơn.
+- Hai cách duyệt: **PIN tại quầy** (`approve_discount_with_pin`: chọn người duyệt trong
+  `list_discount_approvers`, kiểm vai trò của người đó ở đúng shop, sai PIN không ném lỗi để ghi số lần
+  sai, 5 lần → khóa PIN 15 phút như màn khóa) hoặc **từ xa** (`resolve_approval_request` chuyển sang
+  `app.resolve_manual_discount`; màn `/retail` tự theo dõi trạng thái và thanh toán tiếp).
+
+### 7.3 Đổi hàng một bước — `exchange_goods`
+
+```
+exchange_goods(branch, {order_id, reason, return_lines: [...], items: [...], payments: [...], offline_ref})
+```
+
+- Một transaction: khóa đơn gốc → khóa ca `FOR UPDATE` (không nâng từ `FOR SHARE`, tránh deadlock giữa
+  hai lượt đổi) → `exec_goods_return` (nhập kho phần bán lại được, hoàn tiền theo cách khách đã trả,
+  sổ quỹ chi) → `create_sales_order` cho hàng mới (trừ kho, chống bán âm) → phiếu `sales_exchanges`.
+- R = giá trị trả (cùng công thức trả hàng), S = hàng mới theo giá hiện hành. Hóa đơn mới thu S gồm
+  phần đối ứng đúng phương thức vừa hoàn (tối đa R) + phần khách trả thêm. Sổ quỹ ròng = S − R.
+- S ≥ R: Σ `payments` phải đúng S − R, không cần duyệt. S < R: không thu thêm; mức duyệt theo rule
+  `refund` trên R − S — không đủ quyền → yêu cầu `refund` với `payload.kind = 'goods_exchange'`, duyệt
+  xong mới chạy (kiểm lại số hoàn không vượt lúc gửi).
+- Idempotent theo `offline_ref` của hóa đơn mới. `preview_goods_exchange` cho màn hình đúng số DB dùng.
+- Màn `/retail/returns` có thêm chế độ **Đổi hàng** và mục **Yêu cầu chờ duyệt** cho quản lý
+  (trả hàng, đổi hàng, giảm giá tay — trước đây trả hàng chờ duyệt chưa có chỗ duyệt trên giao diện).
+
+### 7.4 In tem mã vạch
+
+`/retail/products` → **In tem mã vạch** (hoặc nút tem ở từng dòng): chọn sản phẩm + số tem, khổ tem
+cuộn 50×30 / 40×25 / 35×22 mm hoặc A4 decal 65 tem, in tên shop / giá tùy chọn. Mã vạch Code 128 tự
+mã hóa trong `web/src/utils/barcode.ts` (bộ C cho mã toàn số, bộ B còn lại) — không thêm thư viện.
+In qua iFrame ẩn (`printHtml` trong `utils/printer.ts`, cùng cách in bill K80). Sản phẩm chưa có mã vạch
+thì in SKU; không có cả hai thì bỏ qua và nhắc.
+
+### 7.5 Chưa làm
 
 - Biến thể sản phẩm (size / màu) — hiện mỗi biến thể là một sản phẩm riêng có mã vạch riêng.
 - Bán theo cân (số lượng lẻ) — `sales_order_items.quantity` đang là số nguyên.
-- Giảm giá tay theo dòng / theo đơn ngoài voucher (cần nối rule engine).
-- Đổi hàng một bước (trả + bán mới) — hiện làm hai thao tác.
-- In tem mã vạch.
-- Thanh toán tách nhiều phương thức trên màn bán lẻ (RPC đã hỗ trợ).
+- Giảm giá tay khi đổi hàng (hàng mới tính theo giá bán hiện hành).
+- Báo cáo bán lẻ chưa tách riêng tổng giảm giá tay (đã có dữ liệu ở `sales_order_discounts`).

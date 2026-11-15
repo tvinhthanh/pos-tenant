@@ -108,7 +108,7 @@ select is((select count(*)::int from public.tables where branch_id = (select c f
           'Shop cho thuê không có bàn');
 select is((select count(*)::int from public.expense_categories where branch_id = (select c from t_ctx)), 5,
           'Mỗi shop có 5 nhóm chi phí');
-select is((select count(*)::int from public.approval_rules where branch_id = (select d from t_ctx)), 7,
+select is((select count(*)::int from public.approval_rules where branch_id = (select d from t_ctx)), 8,
           'Mỗi shop có ngưỡng duyệt mặc định');
 
 -- ---------------------------------------------------------------------------

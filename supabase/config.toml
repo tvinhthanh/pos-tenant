@@ -376,8 +376,14 @@ deno_version = 2
 # Tạo tài khoản nhân viên / đổi mật khẩu — cần Admin API nên phải chạy ở Edge
 # Function, không đưa service_role key vào web container.
 # verify_jwt = true: gateway chặn request không có access token hợp lệ; hàm vẫn
-# tự kiểm role owner/superadmin theo profiles trong DB.
+# tự kiểm quyền (platform_admins / owner toàn tổ chức / manager của shop) trong DB.
 [functions.manage-branch-user]
+enabled = true
+verify_jwt = true
+
+# Chủ shop tự đăng ký. Người gọi chưa có tài khoản nên chỉ có anon key (anon key
+# là JWT hợp lệ nên verify_jwt = true vẫn cho qua). Chống bot bằng Turnstile.
+[functions.self-signup]
 enabled = true
 verify_jwt = true
 

@@ -19,6 +19,7 @@
 -- cho authenticated) để resolve_approval_request chạy lại đúng cùng một đoạn
 -- code, với người tạo = người yêu cầu và người duyệt = người bấm duyệt.
 -- =============================================================================
+set client_encoding = 'UTF8';
 
 -- ---------------------------------------------------------------------------
 -- 1. Quyết định duyệt

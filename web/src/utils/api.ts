@@ -2,6 +2,10 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { normalizeVietnameseText } from "@/utils/text";
 import { bySortOrder, mapOrderItemOptions } from "@/utils/productOptions";
 import { newLocalId, type OfflineOrder } from "@/utils/offlineStore";
+import {
+  BUSINESS_TYPE_LABELS, POS_SERVICE_BY_TYPE, pickActiveShop,
+  type BusinessType, type MyShop,
+} from "@/utils/shop";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
@@ -196,37 +200,100 @@ async function requireProfile() {
   if (error) toApiError(error);
   if (!data.is_active) throwApiError("Tài khoản đã bị khóa.", 403);
 
-  if (data.role !== "superadmin") {
-    if (!data.organization_id || !data.branch_id) {
-      throwApiError("Hồ sơ người dùng thiếu tổ chức hoặc chi nhánh.", 403);
-    }
-
-    const { data: branch, error: branchError } = await getSupabase()
-      .from("branches")
-      .select("id, is_active")
-      .eq("id", data.branch_id)
-      .maybeSingle();
-    if (branchError) toApiError(branchError);
-    if (!branch) throwApiError("Chi nhánh của tài khoản này không tồn tại trong hệ thống.", 403);
-    if (!branch.is_active) {
-      throwApiError("Chi nhánh đã bị khóa. Vui lòng liên hệ Admin tổng để được hỗ trợ.", 403);
-    }
-
-    const { data: subscription, error: subscriptionError } = await getSupabase()
-      .from("subscriptions")
-      .select("id")
-      .eq("branch_id", data.branch_id)
-      .eq("service_code", "pos_fb")
-      .eq("status", "active")
-      .gt("expires_at", new Date().toISOString())
-      .maybeSingle();
-    if (subscriptionError) toApiError(subscriptionError);
-    if (!subscription) {
-      throwApiError("Thuê bao POS F&B của chi nhánh đã hết hạn hoặc chưa được kích hoạt.", 403);
-    }
+  if (data.role === "superadmin") {
+    return { ...data, home_role: data.role, shops: [] as MyShop[], business_type: null, shop_name: null, is_org_owner: false };
   }
 
-  return data;
+  // Multi-shop: vai trò hiển thị là vai trò ở SHOP ĐANG DÙNG (DB vẫn tự kiểm
+  // quyền theo user_assignments ở mọi RPC / policy).
+  const shops = await loadMyShops(userData.user.id);
+  if (shops.length === 0) {
+    throwApiError("Tài khoản chưa được gán vào shop nào. Liên hệ chủ cửa hàng.", 403);
+  }
+  const shop = pickActiveShop(shops, data.branch_id ?? null)!;
+  if (!shop.is_active) {
+    throwApiError("Shop đã bị khóa. Vui lòng liên hệ Admin tổng để được hỗ trợ.", 403);
+  }
+
+  const service = POS_SERVICE_BY_TYPE[shop.business_type];
+  const { data: subscription, error: subscriptionError } = await getSupabase()
+    .from("subscriptions")
+    .select("id")
+    .eq("branch_id", shop.branch_id)
+    .eq("service_code", service)
+    .eq("status", "active")
+    .gt("expires_at", new Date().toISOString())
+    .limit(1)
+    .maybeSingle();
+  if (subscriptionError) toApiError(subscriptionError);
+  if (!subscription) {
+    throwApiError(`Thuê bao ${BUSINESS_TYPE_LABELS[shop.business_type]} của shop đã hết hạn hoặc chưa được kích hoạt.`, 403);
+  }
+
+  return {
+    ...data,
+    home_role: data.role,
+    role: shop.role,
+    organization_id: shop.organization_id,
+    branch_id: shop.branch_id,
+    business_type: shop.business_type,
+    shop_name: shop.name,
+    shops,
+    // Owner toàn tổ chức (tạo shop). DB kiểm lại trong create_shop.
+    is_org_owner: data.role === "owner" && shop.role === "owner",
+  };
+}
+
+// my_shops() được gọi ở mọi request qua requireProfile → nhớ ngắn hạn.
+let shopsCache: { userId: string; at: number; shops: MyShop[] } | null = null;
+const SHOPS_CACHE_MS = 15_000;
+
+async function loadMyShops(userId: string): Promise<MyShop[]> {
+  if (shopsCache && shopsCache.userId === userId && Date.now() - shopsCache.at < SHOPS_CACHE_MS) {
+    return shopsCache.shops;
+  }
+  const { data, error } = await getSupabase().rpc("my_shops");
+  if (error) toApiError(error);
+  const shops = (data || []) as MyShop[];
+  shopsCache = { userId, at: Date.now(), shops };
+  return shops;
+}
+
+export function invalidateShopsCache() {
+  shopsCache = null;
+}
+
+export async function createShop(payload: {
+  name: string;
+  business_type: BusinessType;
+  subdomain?: string | null;
+  address?: string | null;
+  phone?: string | null;
+}) {
+  const { data, error } = await getSupabase().rpc("create_shop", {
+    p_name: payload.name,
+    p_business_type: payload.business_type,
+    p_subdomain: payload.subdomain || null,
+    p_address: payload.address || null,
+    p_phone: payload.phone || null,
+  });
+  if (error) toApiError(error);
+  invalidateShopsCache();
+  return data as { branch_id: number; name: string; business_type: BusinessType; subdomain: string | null };
+}
+
+export async function selfSignup(payload: {
+  email: string;
+  password: string;
+  full_name?: string;
+  shop_name: string;
+  business_type: BusinessType;
+  subdomain?: string | null;
+  captcha_token?: string;
+}) {
+  const { data, error } = await invokeFunction("self-signup", payload);
+  if (error) throwApiError(error.message || "Đăng ký thất bại.", 400);
+  return data as { user_id: string; branch_id: number; email_confirmation_required: boolean };
 }
 
 export async function activeContext() {

@@ -302,6 +302,31 @@ chạy song song với M1 đều sẽ xung đột.
 |---|---|
 | **M1 — Nền tảng** | §0 sửa lỗ hổng đăng ký · `platform_admins` · vai trò theo shop (`role_at`, thay 66 chỗ kiểm quyền) · `business_type`, `subdomain` · `create_shop` · `self-signup` · bộ chọn shop · sidebar theo nghiệp vụ · `assert_business_type` trong RPC F&B |
 
+#### Trạng thái M1 (2026-11-16)
+
+Đã làm, theo migration `20261115000100`, `20261116000050`, `20261116000100`:
+
+- **Vai trò theo shop không cần viết lại từng RPC.** `app.assert_branch_access(branch)`
+  ghi chi nhánh vào `app.ctx_branch` (transaction-local). Sau đó `assert_role`,
+  `is_manager_or_above` và `can_self_approve` tính theo vai trò ở đúng chi nhánh đó.
+  Cả 21 RPC hiện có đều gọi `assert_branch_access` trước, nên tự chuyển sang vai trò
+  theo shop. Không có ngữ cảnh (truy vấn PostgREST trực tiếp) thì chỉ tính vai trò
+  toàn tổ chức (fail-closed). Policy ghi theo chi nhánh dùng `is_manager_at(branch_id)`
+  / `is_owner_at(branch_id)` tường minh.
+  **RPC mới về sau bắt buộc gọi `assert_branch_access` trước `assert_role`.**
+- Thay cho `assert_business_type` riêng: `app.assert_service` chặn `pos_fb` / `inventory`
+  trên shop cho thuê, và kiểm thuê bao `pos_retail` khi shop bán lẻ gọi RPC POS.
+- `create_shop`, `set_shop_subdomain`, `my_shops`, `provision_tenant`; gói `trial`
+  (3 shop, 14 ngày); Edge Function `self-signup`; trang `/signup`; bộ chọn shop ở
+  Header; sidebar ẩn màn hình không thuộc nghiệp vụ.
+- Owner luôn được gán **toàn tổ chức** (`branch_id null`), kể cả owner cũ (backfill).
+
+Chưa làm trong M1:
+- Màn hình Nhân viên chưa có chỗ gán một người vào nhiều shop với vai trò khác nhau.
+  Edge Function đã nhận `branch_id` khi `update`; phần giao diện để sau.
+- Shop cho thuê chưa có màn hình nghiệp vụ nào (chờ nhánh A).
+- `profiles.role` vẫn còn, dùng làm vai trò hiển thị / toàn tổ chức.
+
 Sau M1, **3 nhánh song song**, mỗi nhánh một worktree / session riêng:
 
 | Nhánh | Nội dung theo thứ tự | Đụng vào |

@@ -4,7 +4,10 @@ import React, { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Menu, Bell, Search, User, ShieldCheck } from "lucide-react";
 import api from "@/utils/api";
+import type { MyShop } from "@/utils/shop";
+import { SHOP_ROLE_LABELS, type ShopRole } from "@/utils/shop";
 import ThemeToggle from "./ThemeToggle";
+import ShopSwitcher from "./ShopSwitcher";
 
 interface HeaderProps {
   onMenuToggle: () => void;
@@ -12,7 +15,13 @@ interface HeaderProps {
 
 export default function Header({ onMenuToggle }: HeaderProps) {
   const pathname = usePathname();
-  const [user, setUser] = useState<{ full_name: string | null; role: string } | null>(null);
+  const [user, setUser] = useState<{
+    full_name: string | null;
+    role: string;
+    branch_id?: number;
+    shops?: MyShop[];
+    is_org_owner?: boolean;
+  } | null>(null);
   const [hasNotifications, setHasNotifications] = useState(true);
 
   useEffect(() => {
@@ -75,8 +84,13 @@ export default function Header({ onMenuToggle }: HeaderProps) {
           <Menu className="w-5 h-5" />
         </button>
 
+        {/* Shop đang dùng (multi-shop) */}
+        {user?.shops && user.shops.length > 0 && user.branch_id && (
+          <ShopSwitcher shops={user.shops} activeBranchId={user.branch_id} canCreate={Boolean(user.is_org_owner)} />
+        )}
+
         {/* Breadcrumb / Title */}
-        <div className="flex items-center space-x-2 text-sm font-medium">
+        <div className="hidden sm:flex items-center space-x-2 text-sm font-medium">
           <span className="text-slate-200 font-semibold">{getPageTitle()}</span>
         </div>
       </div>
@@ -112,7 +126,7 @@ export default function Header({ onMenuToggle }: HeaderProps) {
           <div className="flex items-center space-x-3 pl-2 border-l border-slate-900">
             <div className="hidden text-right lg:block">
               <span className="block text-xs font-semibold text-slate-200">{displayName}</span>
-              <span className="block text-[10px] text-slate-500 capitalize">{user.role}</span>
+              <span className="block text-[10px] text-slate-500">{SHOP_ROLE_LABELS[user.role as ShopRole] ?? user.role}</span>
             </div>
             
             <div className="relative flex h-8.5 w-8.5 items-center justify-center rounded-xl bg-indigo-600/10 text-indigo-400 border border-indigo-500/20 font-bold text-sm uppercase shrink-0">

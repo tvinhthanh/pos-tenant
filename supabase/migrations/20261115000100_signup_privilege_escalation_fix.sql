@@ -19,6 +19,7 @@
 -- profiles + user_assignments bằng service role ngay sau khi tạo user, nên
 -- không phụ thuộc vào metadata ở trigger.
 -- =============================================================================
+set client_encoding = 'UTF8';
 
 create or replace function app.handle_new_auth_user() returns trigger
 language plpgsql security definer set search_path = '' as $$

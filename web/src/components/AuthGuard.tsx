@@ -7,7 +7,7 @@ import { usePathname } from "next/navigation";
 import api, { supabase } from "@/utils/api";
 import { markUnlocked } from "@/utils/pinLock";
 
-const PUBLIC_PATHS = new Set<string>();
+const PUBLIC_PATHS = new Set<string>(["/signup"]);
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -201,6 +201,11 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
               )}
             </button>
           </form>
+
+          <p className="mt-6 text-center text-xs text-slate-500">
+            Chưa có cửa hàng?{" "}
+            <a href="/signup" className="font-semibold text-indigo-400 hover:text-indigo-300">Đăng ký shop miễn phí</a>
+          </p>
         </div>
       </div>
     );

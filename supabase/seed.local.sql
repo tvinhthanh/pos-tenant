@@ -252,6 +252,11 @@ begin
     identity_data = excluded.identity_data,
     updated_at = now();
 
+  -- superadmin = bảng platform_admins (trigger profiles_superadmin_guard chặn
+  -- profiles.role = 'superadmin' khi chưa có ở đây).
+  insert into public.platform_admins (user_id) values (v_superadmin_user_id)
+  on conflict do nothing;
+
   insert into public.profiles (
     id, username, full_name, is_active, role, organization_id, branch_id
   ) values
@@ -270,7 +275,7 @@ begin
   insert into public.user_assignments (
     user_id, organization_id, branch_id, role
   ) values
-    (v_owner_user_id, v_org_id, v_branch_id, 'owner'),
+    (v_owner_user_id, v_org_id, null, 'owner'),          -- toàn tổ chức: tự có quyền ở mọi shop
     (v_staff_user_id, v_org_id, v_branch_id, 'staff'),
     (v_superadmin_user_id, v_org_id, v_branch_id, 'superadmin')
   on conflict (user_id, organization_id, (coalesce(branch_id, -1))) do update set

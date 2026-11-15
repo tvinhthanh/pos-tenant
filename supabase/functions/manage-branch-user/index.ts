@@ -40,6 +40,7 @@ type CreatePayload = {
 type UpdatePayload = {
   action: 'update'
   user_id: string
+  branch_id?: number        // shop cần đổi vai trò (vai trò theo shop)
   password?: string
   full_name?: string | null
   role?: string
@@ -85,9 +86,19 @@ function fail(detail: string, status = 400): Response {
   return json({ detail }, status)
 }
 
-// Định danh người gọi từ access token, rồi đọc profile thật trong DB.
+type Actor = {
+  id: string
+  organization_id: number
+  isSuperadmin: boolean
+  isOrgOwner: boolean
+  managerBranchIds: number[]
+}
+
+// Định danh người gọi từ access token, rồi đọc quyền thật trong DB.
 // Không tin role trong JWT vì token có thể được cấp trước khi đổi quyền.
-async function resolveActor(request: Request) {
+// Vai trò theo shop: owner toàn tổ chức (assignment branch_id null) quản lý mọi
+// shop; manager của một shop chỉ tạo được tài khoản staff cho đúng shop đó.
+async function resolveActor(request: Request): Promise<{ error: Response } | { actor: Actor }> {
   const authHeader = request.headers.get('Authorization') ?? ''
   const token = authHeader.replace(/^Bearer\s+/i, '')
   if (!token) return { error: fail('Thiếu access token.', 401) }
@@ -103,29 +114,53 @@ async function resolveActor(request: Request) {
 
   if (profileError || !profile) return { error: fail('Không tìm thấy hồ sơ người dùng.', 403) }
   if (!profile.is_active) return { error: fail('Tài khoản đã bị khóa.', 403) }
-  if (profile.role !== 'owner' && profile.role !== 'superadmin') {
-    return { error: fail('Chỉ chủ quán mới được quản lý tài khoản nhân viên.', 403) }
+
+  const [{ data: platformAdmin }, { data: assignments, error: assignmentsError }] = await Promise.all([
+    admin.from('platform_admins').select('user_id').eq('user_id', profile.id).maybeSingle(),
+    admin.from('user_assignments').select('organization_id, branch_id, role').eq('user_id', profile.id),
+  ])
+  if (assignmentsError) return { error: fail('Không đọc được phân quyền.', 500) }
+
+  const rows = (assignments ?? []) as { organization_id: number; branch_id: number | null; role: string }[]
+  const actor: Actor = {
+    id: profile.id,
+    organization_id: profile.organization_id,
+    isSuperadmin: !!platformAdmin,
+    isOrgOwner: rows.some((a) =>
+      a.branch_id === null && a.role === 'owner' && a.organization_id === profile.organization_id),
+    managerBranchIds: rows
+      .filter((a) => a.branch_id !== null && (a.role === 'manager' || a.role === 'owner'))
+      .map((a) => a.branch_id as number),
   }
 
-  return { profile }
+  if (!actor.isSuperadmin && !actor.isOrgOwner && actor.managerBranchIds.length === 0) {
+    return { error: fail('Chỉ chủ cửa hàng hoặc quản lý shop mới được quản lý tài khoản nhân viên.', 403) }
+  }
+
+  return { actor }
+}
+
+function canManageOrg(actor: Actor, organizationId: number): boolean {
+  return actor.isSuperadmin || (actor.isOrgOwner && actor.organization_id === organizationId)
 }
 
 // user_assignments dùng UNIQUE dạng index biểu thức
 // (user_id, organization_id, coalesce(branch_id, -1)) nên PostgREST không upsert
 // theo onConflict được — phải tự kiểm tra rồi insert/update.
+// branchId = null → vai trò toàn tổ chức (owner).
 async function assignBranchRole(
   userId: string,
   organizationId: number,
-  branchId: number,
+  branchId: number | null,
   role: string,
 ): Promise<string | null> {
-  const { data: existing, error: selectError } = await admin
+  let query = admin
     .from('user_assignments')
     .select('id')
     .eq('user_id', userId)
     .eq('organization_id', organizationId)
-    .eq('branch_id', branchId)
-    .maybeSingle()
+  query = branchId === null ? query.is('branch_id', null) : query.eq('branch_id', branchId)
+  const { data: existing, error: selectError } = await query.maybeSingle()
 
   if (selectError) return selectError.message
 
@@ -168,8 +203,8 @@ async function assertUserQuota(organizationId: number): Promise<string | null> {
   return null
 }
 
-async function requireSuperadmin(actor: { role: string }): Promise<Response | null> {
-  return actor.role === 'superadmin' ? null : fail('Chỉ superadmin mới được quản lý cửa hàng.', 403)
+async function requireSuperadmin(actor: Actor): Promise<Response | null> {
+  return actor.isSuperadmin ? null : fail('Chỉ superadmin mới được quản lý cửa hàng.', 403)
 }
 
 async function findPlanId(tier: string): Promise<number | null> {
@@ -239,26 +274,12 @@ async function seedBranchDefaults(
       { code: 'marketing', name: 'Marketing', sub_categories: ['Quảng cáo', 'Khuyến mãi'] },
       { code: 'others', name: 'Khác', sub_categories: ['Khác'] },
     ].map((category) => ({ organization_id: organizationId, branch_id: branchId, ...category })))
-  if (categoriesError) return categoriesError.message
-
-  const { error: rulesError } = await admin
-    .from('approval_rules')
-    .insert([
-      { action_type: 'refund', auto_approve_under: 100000, manager_approve_above: 100000, owner_approve_above: 500000 },
-      { action_type: 'opex_limit', auto_approve_under: 200000, manager_approve_above: 200000, owner_approve_above: 1000000 },
-      { action_type: 'price_change', auto_approve_under: null, manager_approve_above: 0, owner_approve_above: 500000 },
-      { action_type: 'inventory_adjustment', auto_approve_under: 100000, manager_approve_above: 100000, owner_approve_above: 500000 },
-      { action_type: 'kitchen_cancel', auto_approve_under: 100000, manager_approve_above: 100000, owner_approve_above: 500000 },
-    ].map((rule) => ({
-      organization_id: organizationId,
-      branch_id: branchId,
-      is_enabled: true,
-      ...rule,
-    })))
-  return rulesError?.message ?? null
+  // approval_rules: trigger branches_seed_approval_rules đã tạo ngưỡng mặc định
+  // khi insert chi nhánh (insert lại ở đây sẽ trùng khóa (branch_id, action_type)).
+  return categoriesError?.message ?? null
 }
 
-async function handleCreate(actor: { role: string; organization_id: number }, payload: CreatePayload) {
+async function handleCreate(actor: Actor, payload: CreatePayload) {
   const username = (payload.username ?? '').trim().toLowerCase()
   const password = payload.password ?? ''
   const role = payload.role ?? 'staff'
@@ -280,8 +301,14 @@ async function handleCreate(actor: { role: string; organization_id: number }, pa
     .single()
 
   if (branchError || !branch) return fail('Chi nhánh không tồn tại.')
-  if (actor.role !== 'superadmin' && branch.organization_id !== actor.organization_id) {
-    return fail('Chi nhánh không thuộc tổ chức của bạn.', 403)
+  if (!canManageOrg(actor, branch.organization_id)) {
+    // Quản lý một shop: chỉ tạo staff cho đúng shop mình quản lý.
+    if (!actor.managerBranchIds.includes(branch.id)) {
+      return fail('Bạn không quản lý shop này.', 403)
+    }
+    if (role !== 'staff') {
+      return fail('Quản lý shop chỉ được tạo tài khoản nhân viên (staff).', 403)
+    }
   }
 
   const quotaError = await assertUserQuota(branch.organization_id)
@@ -332,8 +359,9 @@ async function handleCreate(actor: { role: string; organization_id: number }, pa
     return fail(`Tạo hồ sơ thất bại: ${profileError.message}`, 400)
   }
 
+  // Owner = toàn tổ chức (tự có quyền ở mọi shop); manager/staff = đúng shop này.
   const assignmentError = await assignBranchRole(
-    created.user.id, branch.organization_id, branch.id, role)
+    created.user.id, branch.organization_id, role === 'owner' ? null : branch.id, role)
 
   if (assignmentError) {
     await admin.auth.admin.deleteUser(created.user.id)
@@ -343,7 +371,7 @@ async function handleCreate(actor: { role: string; organization_id: number }, pa
   return json({ user_id: created.user.id, username, email, role })
 }
 
-async function handleUpdate(actor: { role: string; organization_id: number }, payload: UpdatePayload) {
+async function handleUpdate(actor: Actor, payload: UpdatePayload) {
   if (!payload.user_id) return fail('Thiếu user_id.')
 
   const { data: target, error: targetError } = await admin
@@ -353,11 +381,15 @@ async function handleUpdate(actor: { role: string; organization_id: number }, pa
     .single()
 
   if (targetError || !target) return fail('Tài khoản không tồn tại.', 404)
-  if (actor.role !== 'superadmin' && target.organization_id !== actor.organization_id) {
-    return fail('Tài khoản không thuộc tổ chức của bạn.', 403)
+  // Đổi mật khẩu / vai trò / khóa: chỉ owner toàn tổ chức (hoặc superadmin).
+  if (!canManageOrg(actor, target.organization_id)) {
+    return fail('Chỉ chủ cửa hàng mới được sửa tài khoản nhân viên.', 403)
   }
-  if (target.role === 'superadmin' && actor.role !== 'superadmin') {
+  if (target.role === 'superadmin' && !actor.isSuperadmin) {
     return fail('Không được sửa tài khoản superadmin.', 403)
+  }
+  if (target.id === actor.id && payload.role !== undefined && payload.role !== 'owner') {
+    return fail('Không tự hạ quyền của chính mình.', 400)
   }
 
   if (payload.password !== undefined && payload.password !== '') {
@@ -386,9 +418,19 @@ async function handleUpdate(actor: { role: string; organization_id: number }, pa
 
   if (updateError) return fail(`Cập nhật hồ sơ thất bại: ${updateError.message}`, 400)
 
-  if (payload.role !== undefined && target.branch_id) {
+  // Vai trò theo shop: payload.branch_id chọn shop cần đổi (mặc định shop chính
+  // của tài khoản). Owner luôn là vai trò toàn tổ chức.
+  const roleBranchId = payload.branch_id ?? target.branch_id
+  if (payload.branch_id !== undefined) {
+    const { data: roleBranch } = await admin
+      .from('branches').select('organization_id').eq('id', payload.branch_id).maybeSingle()
+    if (!roleBranch || roleBranch.organization_id !== target.organization_id) {
+      return fail('Shop không thuộc tổ chức của tài khoản này.', 400)
+    }
+  }
+  if (payload.role !== undefined && (roleBranchId || payload.role === 'owner')) {
     const assignmentError = await assignBranchRole(
-      target.id, target.organization_id, target.branch_id, payload.role)
+      target.id, target.organization_id, payload.role === 'owner' ? null : roleBranchId, payload.role)
     if (assignmentError) {
       return fail(`Cập nhật phân quyền chi nhánh thất bại: ${assignmentError}`, 400)
     }
@@ -397,7 +439,7 @@ async function handleUpdate(actor: { role: string; organization_id: number }, pa
   return json({ user_id: target.id, updated: true })
 }
 
-async function handleCreateStore(actor: { role: string }, payload: CreateStorePayload) {
+async function handleCreateStore(actor: Actor, payload: CreateStorePayload) {
   const permissionError = await requireSuperadmin(actor)
   if (permissionError) return permissionError
 
@@ -497,7 +539,8 @@ async function handleCreateStore(actor: { role: string }, payload: CreateStorePa
     return fail(`Tạo hồ sơ owner thất bại: ${profileError.message}`, 400)
   }
 
-  const assignmentError = await assignBranchRole(createdUserId, organizationId, branchId, 'owner')
+  // Owner toàn tổ chức: tự có quyền ở mọi shop tạo sau này.
+  const assignmentError = await assignBranchRole(createdUserId, organizationId, null, 'owner')
   if (assignmentError) {
     await rollback()
     return fail(`Phân quyền owner thất bại: ${assignmentError}`, 400)
@@ -506,7 +549,7 @@ async function handleCreateStore(actor: { role: string }, payload: CreateStorePa
   return json({ organization_id: organizationId, branch_id: branchId, owner_user_id: createdUserId })
 }
 
-async function handleUpdateStore(actor: { role: string }, payload: UpdateStorePayload) {
+async function handleUpdateStore(actor: Actor, payload: UpdateStorePayload) {
   const permissionError = await requireSuperadmin(actor)
   if (permissionError) return permissionError
   if (!payload.organization_id) return fail('Thiếu organization_id.')
@@ -569,7 +612,7 @@ async function handleUpdateStore(actor: { role: string }, payload: UpdateStorePa
   return json({ organization_id: payload.organization_id, updated: true })
 }
 
-async function handleDeleteStore(actor: { role: string; organization_id: number }, payload: DeleteStorePayload) {
+async function handleDeleteStore(actor: Actor, payload: DeleteStorePayload) {
   const permissionError = await requireSuperadmin(actor)
   if (permissionError) return permissionError
   if (!payload.organization_id) return fail('Thiếu organization_id.')
@@ -595,7 +638,7 @@ Deno.serve(async (request) => {
 
   const actorResult = await resolveActor(request)
   if ('error' in actorResult) return actorResult.error
-  const actor = actorResult.profile as { role: string; organization_id: number }
+  const actor = actorResult.actor
 
   let payload: Payload
   try {

@@ -11,6 +11,18 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import api, { supabase } from "@/utils/api";
 import { getBranchProfile } from "@/utils/rpc";
+import { BUSINESS_TYPE_LABELS, type BusinessType } from "@/utils/shop";
+
+// Màn hình chỉ có nghĩa với một số nghiệp vụ. Không có trong bảng = mọi nghiệp vụ.
+// (Chỉ ẩn menu; DB tự chặn RPC sai nghiệp vụ trong app.assert_service.)
+const PATHS_BY_BUSINESS: Record<string, BusinessType[]> = {
+  "/tables": ["fnb"],
+  "/pos": ["fnb", "retail"],
+  "/menu": ["fnb", "retail"],
+  "/inventory": ["fnb", "retail"],
+  "/inventory/adjustments": ["fnb", "retail"],
+  "/suppliers": ["fnb", "retail"],
+};
 
 interface SidebarProps {
   isOpen: boolean;
@@ -20,7 +32,12 @@ interface SidebarProps {
 export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const [user, setUser] = useState<{ full_name: string | null; role: string } | null>(null);
+  const [user, setUser] = useState<{
+    full_name: string | null;
+    role: string;
+    business_type?: BusinessType | null;
+    shop_name?: string | null;
+  } | null>(null);
 
   useEffect(() => {
     api.get("/api/v1/auth/me")
@@ -39,6 +56,10 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
 
   const isOwner = user?.role === "owner" || user?.role === "superadmin";
   const isSuperadmin = user?.role === "superadmin";
+  // Quản lý một shop cũng được tạo tài khoản staff cho shop đó.
+  const canManageUsers = isOwner || user?.role === "manager";
+  const businessType: BusinessType = user?.business_type ?? "fnb";
+  const allowedHere = (path: string) => !PATHS_BY_BUSINESS[path] || PATHS_BY_BUSINESS[path].includes(businessType);
 
   // Tên quán lấy từ trang "Thông tin quán" (hoặc tên cửa hàng), không viết cứng
   const { data: branchProfile } = useQuery({
@@ -46,7 +67,9 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
     queryFn: getBranchProfile,
     enabled: Boolean(user) && !isSuperadmin,
   });
-  const storeName = isSuperadmin ? "POS Admin" : branchProfile?.receipt_name || branchProfile?.organization_name || "POS";
+  const storeName = isSuperadmin
+    ? "POS Admin"
+    : branchProfile?.receipt_name || user?.shop_name || branchProfile?.organization_name || "POS";
 
   const navGroups = isSuperadmin ? [
     {
@@ -63,15 +86,15 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
       items: [
         { name: "Tổng quan", path: "/", icon: LayoutDashboard },
         { name: "Khu vực & Bàn", path: "/tables", icon: Map },
-        ...(isOwner ? [{ name: "Nhân viên", path: "/users", icon: User }] : []),
+        ...(canManageUsers ? [{ name: "Nhân viên", path: "/users", icon: User }] : []),
         { name: "Thông tin quán", path: "/settings", icon: Settings },
       ]
     },
     {
-      title: "Bán hàng & Kho",
+      title: businessType === "rental" ? "Cho thuê" : "Bán hàng & Kho",
       items: [
         { name: "POS Bán hàng", path: "/pos", icon: ShoppingCart },
-        { name: "Thực đơn & Tùy chọn", path: "/menu", icon: UtensilsCrossed },
+        { name: businessType === "retail" ? "Sản phẩm" : "Thực đơn & Tùy chọn", path: "/menu", icon: UtensilsCrossed },
         { name: "Kho & Định lượng", path: "/inventory", icon: Package },
         { name: "Điều chỉnh kho", path: "/inventory/adjustments", icon: Scale },
       ]
@@ -109,7 +132,7 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
             <div>
               <span className="text-base font-bold tracking-tight text-slate-100 block truncate max-w-[9.5rem]" title={storeName}>{storeName}</span>
               <span className="text-[10px] text-indigo-400 font-medium tracking-wide">
-                {isSuperadmin ? "SaaS Administration" : "Bán hàng & quản lý quán"}
+                {isSuperadmin ? "SaaS Administration" : BUSINESS_TYPE_LABELS[businessType]}
               </span>
             </div>
           </div>
@@ -124,7 +147,15 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
 
         {/* Navigation List */}
         <nav className="mt-6 px-4 space-y-6 flex-1">
-          {navGroups.map((group) => (
+          {businessType === "rental" && !isSuperadmin && (
+            <p className="mx-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-300">
+              Phân hệ cho thuê (hợp đồng, cọc, lịch) đang được xây dựng. Hiện dùng được sổ quỹ, chi phí, nhân viên.
+            </p>
+          )}
+          {navGroups
+            .map((group) => ({ ...group, items: group.items.filter((item) => allowedHere(item.path)) }))
+            .filter((group) => group.items.length > 0)
+            .map((group) => (
             <div key={group.title} className="space-y-2">
               <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest px-3.5 block">
                 {group.title}

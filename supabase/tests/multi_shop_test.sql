@@ -8,7 +8,7 @@ begin;
 
 set search_path = public, extensions, app;
 
-select extensions.plan(29);
+select extensions.plan(30);
 
 -- ---------------------------------------------------------------------------
 -- Dữ liệu: tổ chức gói 4 shop, 3 tài khoản
@@ -108,7 +108,7 @@ select is((select count(*)::int from public.tables where branch_id = (select c f
           'Shop cho thuê không có bàn');
 select is((select count(*)::int from public.expense_categories where branch_id = (select c from t_ctx)), 5,
           'Mỗi shop có 5 nhóm chi phí');
-select is((select count(*)::int from public.approval_rules where branch_id = (select d from t_ctx)), 5,
+select is((select count(*)::int from public.approval_rules where branch_id = (select d from t_ctx)), 7,
           'Mỗi shop có ngưỡng duyệt mặc định');
 
 -- ---------------------------------------------------------------------------
@@ -161,9 +161,12 @@ reset role;
 select pg_temp.login('owner');
 set local role authenticated;
 
+select lives_ok(
+  format('select public.open_shift(%s, 0, null)', (select c from t_ctx)),
+  'Shop cho thuê mở ca được (thu cọc / tiền thuê)');
 select throws_ok(
-  format('select public.open_shift(%s, 0, null)', (select c from t_ctx)), '22023', null,
-  'Shop cho thuê không mở ca POS F&B');
+  format($$select public.create_sales_order(%s, '{"items": [], "payments": []}')$$, (select c from t_ctx)), '22023', null,
+  'Shop cho thuê không bán hàng POS F&B');
 
 select lives_ok(format('select pg_temp.expense(%s)', (select c from t_ctx)),
                 'Shop cho thuê vẫn dùng sổ quỹ / chi phí');

@@ -11,6 +11,7 @@ import api from "@/utils/api";
 type CurrentUser = {
   id: string;
   role: string;
+  business_type?: "fnb" | "retail" | "rental" | null;
   username?: string | null;
   full_name?: string | null;
 };
@@ -34,11 +35,17 @@ export default function RoleLayout({ children }: { children: React.ReactNode }) 
   });
 
   const isStaff = user?.role === "staff";
+  // Nhân viên: F&B / bán lẻ chỉ dùng màn POS; shop cho thuê dùng các màn cho thuê.
+  const staffIsRental = isStaff && user?.business_type === "rental";
+  const staffHome = staffIsRental ? "/rental" : "/pos";
+  const staffAllowed = staffIsRental
+    ? pathname.startsWith("/rental") && !pathname.startsWith("/rental/report")
+    : pathname === "/pos";
   const isSuperadmin = user?.role === "superadmin";
 
   useEffect(() => {
-    if (isStaff && pathname !== "/pos") {
-      router.replace("/pos");
+    if (isStaff && !staffAllowed) {
+      router.replace(staffHome);
     }
     if (isSuperadmin && !pathname.startsWith(SUPERADMIN_PREFIX)) {
       router.replace("/superadmin/stores");
@@ -46,7 +53,7 @@ export default function RoleLayout({ children }: { children: React.ReactNode }) 
     if (user && !isSuperadmin && pathname.startsWith(SUPERADMIN_PREFIX)) {
       router.replace("/");
     }
-  }, [isStaff, isSuperadmin, pathname, router, user]);
+  }, [isStaff, staffAllowed, staffHome, isSuperadmin, pathname, router, user]);
 
   if (isPublicPath) {
     return <>{children}</>;
@@ -54,7 +61,7 @@ export default function RoleLayout({ children }: { children: React.ReactNode }) 
 
   if (
     isLoading ||
-    (isStaff && pathname !== "/pos") ||
+    (isStaff && !staffAllowed) ||
     (isSuperadmin && !pathname.startsWith(SUPERADMIN_PREFIX)) ||
     (Boolean(user) && !isSuperadmin && pathname.startsWith(SUPERADMIN_PREFIX))
   ) {
@@ -70,7 +77,7 @@ export default function RoleLayout({ children }: { children: React.ReactNode }) 
   }
 
   // Khóa màn hình bằng PIN của chính tài khoản đang đăng nhập (mọi trang, kể cả POS).
-  if (isStaff) {
+  if (isStaff && !staffIsRental) {
     return <ScreenLock key={user.id} user={user}>{children}</ScreenLock>;
   }
 

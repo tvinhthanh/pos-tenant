@@ -57,6 +57,16 @@ export default function Header({ onMenuToggle }: HeaderProps) {
         return "Khu vực & Bàn";
       case "/shifts":
         return "Lịch sử ca";
+      case "/rental":
+        return "Bảng cho thuê";
+      case "/rental/new":
+        return "Thuê mới";
+      case "/rental/contracts":
+        return "Hợp đồng thuê";
+      case "/rental/catalog":
+        return "Danh mục cho thuê";
+      case "/rental/report":
+        return "Báo cáo cho thuê";
       case "/marketing":
         return "Marketing & Loyalty";
       case "/superadmin/stores":

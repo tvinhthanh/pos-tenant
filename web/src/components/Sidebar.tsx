@@ -6,7 +6,8 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, ShoppingCart, Package, DollarSign,
   Users, BarChart3, LogOut, Coffee, ShieldCheck, User, X,
-  Map, History, Megaphone, Scale, Store, UtensilsCrossed, Settings
+  Map, History, Megaphone, Scale, Store, UtensilsCrossed, Settings,
+  LayoutGrid, FileText, Boxes, PieChart
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import api, { supabase } from "@/utils/api";
@@ -22,6 +23,10 @@ const PATHS_BY_BUSINESS: Record<string, BusinessType[]> = {
   "/inventory": ["fnb", "retail"],
   "/inventory/adjustments": ["fnb", "retail"],
   "/suppliers": ["fnb", "retail"],
+  "/rental": ["rental"],
+  "/rental/contracts": ["rental"],
+  "/rental/catalog": ["rental"],
+  "/rental/report": ["rental"],
 };
 
 interface SidebarProps {
@@ -59,7 +64,11 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
   // Quản lý một shop cũng được tạo tài khoản staff cho shop đó.
   const canManageUsers = isOwner || user?.role === "manager";
   const businessType: BusinessType = user?.business_type ?? "fnb";
-  const allowedHere = (path: string) => !PATHS_BY_BUSINESS[path] || PATHS_BY_BUSINESS[path].includes(businessType);
+  const isStaff = user?.role === "staff";
+  // Nhân viên shop cho thuê chỉ làm việc trong các màn hình cho thuê (RoleLayout cũng chặn).
+  const allowedHere = (path: string) =>
+    (!PATHS_BY_BUSINESS[path] || PATHS_BY_BUSINESS[path].includes(businessType)) &&
+    (!isStaff || (path.startsWith("/rental") && path !== "/rental/report"));
 
   // Tên quán lấy từ trang "Thông tin quán" (hoặc tên cửa hàng), không viết cứng
   const { data: branchProfile } = useQuery({
@@ -93,6 +102,9 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
     {
       title: businessType === "rental" ? "Cho thuê" : "Bán hàng & Kho",
       items: [
+        { name: "Bảng cho thuê", path: "/rental", icon: LayoutGrid },
+        { name: "Hợp đồng thuê", path: "/rental/contracts", icon: FileText },
+        { name: "Danh mục cho thuê", path: "/rental/catalog", icon: Boxes },
         { name: "POS Bán hàng", path: "/pos", icon: ShoppingCart },
         { name: businessType === "retail" ? "Sản phẩm" : "Thực đơn & Tùy chọn", path: "/menu", icon: UtensilsCrossed },
         { name: "Kho & Định lượng", path: "/inventory", icon: Package },
@@ -110,6 +122,7 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
     {
       title: "Báo cáo",
       items: [
+        { name: "Báo cáo cho thuê", path: "/rental/report", icon: PieChart },
         { name: "Báo cáo & Thuế", path: "/reports", icon: BarChart3 },
         { name: "Lịch sử ca", path: "/shifts", icon: History },
       ]
@@ -147,11 +160,6 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
 
         {/* Navigation List */}
         <nav className="mt-6 px-4 space-y-6 flex-1">
-          {businessType === "rental" && !isSuperadmin && (
-            <p className="mx-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-300">
-              Phân hệ cho thuê (hợp đồng, cọc, lịch) đang được xây dựng. Hiện dùng được sổ quỹ, chi phí, nhân viên.
-            </p>
-          )}
           {navGroups
             .map((group) => ({ ...group, items: group.items.filter((item) => allowedHere(item.path)) }))
             .filter((group) => group.items.length > 0)

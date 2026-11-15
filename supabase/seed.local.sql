@@ -20,15 +20,19 @@ declare
   v_branch_id     bigint;
   v_area_id       bigint;
 begin
+  -- Gói riêng cho DB local: nhiều shop + đủ nghiệp vụ để thử multi-shop.
+  -- KHÔNG dùng single_restaurant (gói production 1 shop).
   insert into public.subscription_plans (
     name, price, max_branches, max_users, service_codes, is_active
   ) values (
-    'single_restaurant',
+    'local_demo',
     0,
-    1,
     10,
+    20,
     array[
       'pos_fb'::app.service_code,
+      'pos_retail'::app.service_code,
+      'pos_rental'::app.service_code,
       'inventory'::app.service_code,
       'cashbook'::app.service_code,
       'crm_loyalty'::app.service_code

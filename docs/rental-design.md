@@ -9,6 +9,27 @@ Status: **draft for review**. No code has been changed yet; this file decides wh
 > Sections 2–6 (data model, lifecycle, invariants R1–R8, RPCs, screens) still stand;
 > every rental RPC also calls `app.assert_business_type(branch, 'rental')`.
 
+> **Implemented (2026-11-17)** — migrations `20261117000050/0100/0200`, test `supabase/tests/rental_test.sql`,
+> screens `web/src/app/rental/**`. Differences from the draft below:
+> - Business-type check lives in `app.assert_service(branch, 'pos_rental')`; shifts work for every
+>   business type via `app.assert_pos_service`.
+> - Unit status is physical only (`available/out/maintenance/lost/retired`); future reservations
+>   never change it — availability comes from `rental_lines`.
+> - Fees are billed at return from **actual** time; the part beyond the planned end is a separate
+>   `late` charge. Early return bills actual time. No `no_show` status yet (cancel covers it);
+>   no calendar screen yet; 24-hour blocks only (no calendar-day setting).
+> - R7 uses the existing approval engine: new actions `charge_waiver`, `deposit_forfeit`.
+>
+> **Concurrency** (verified with two real concurrent psql sessions, not only pgTAP):
+> | Race | Guard |
+> |---|---|
+> | Two checkouts of the last unit | `FOR UPDATE` on the unit + R1 exclusion constraint |
+> | Two bookings of the last bulk quantity | advisory lock per item (R2 trigger) |
+> | Reducing `bulk_quantity` below what is booked | same advisory lock + peak-usage check |
+> | Payment while the shift is being closed | `require_open_shift` takes `FOR SHARE`; `close_shift` holds `FOR UPDATE` |
+> | Same new customer created twice | `on conflict (branch_id, phone)` |
+> | Discount / forfeit racing settle or cancel | `FOR UPDATE` on the contract before every check |
+
 pos-supabase-2 starts as a copy of pos-supabase (F&B POS). It keeps the parts that
 protect money and permissions, and replaces the F&B domain (recipes, ingredients,
 tables, kitchen) with a rental domain that covers every kind of rental shop:

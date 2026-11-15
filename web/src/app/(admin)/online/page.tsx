@@ -187,9 +187,7 @@ function RequestCard({ r, now, draft, isManager, onDone }: {
         {r.converted_kind === "sales_order" && draft?.status === "draft" && (
           <>
             <button onClick={() => setDialog("pay")} className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500">Thu tiền {vnd(draft.final_amount)}</button>
-            {isManager && (
-              <button onClick={() => setDialog("transfer")} className="rounded-xl border border-indigo-500/50 px-4 py-2 text-sm text-indigo-500 hover:bg-indigo-500/10">Đã nhận CK</button>
-            )}
+            <button onClick={() => setDialog("transfer")} className="rounded-xl border border-indigo-500/50 px-4 py-2 text-sm text-indigo-500 hover:bg-indigo-500/10">Đã nhận CK</button>
             {isManager && <button onClick={() => setDialog("cancel")} className="rounded-xl px-3 py-2 text-sm text-rose-500 hover:bg-rose-500/10">Khách không đến</button>}
           </>
         )}

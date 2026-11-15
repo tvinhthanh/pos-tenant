@@ -4,7 +4,7 @@ begin;
 
 set search_path = public, extensions, app;
 
-select extensions.plan(26);
+select extensions.plan(29);
 
 -- ---------------------------------------------------------------------------
 -- Dữ liệu: chi nhánh A (owner/manager/staff) + chi nhánh B (staff_b)
@@ -187,6 +187,18 @@ select is((select array[total_amount, discount_amount, final_amount] from public
   array[65000, 5000, 60000]::bigint[], 'Đổi 50 điểm (5.000đ) lúc tạo nháp: vẫn giảm 5.000 sau khi gọi thêm');
 select is((select points from public.customers where phone = '0900000888'), 50::bigint,
   'Gọi thêm không trừ điểm lần nữa');
+
+-- Thanh toán đơn nháp đã đổi điểm: giữ phần giảm 5.000, không trừ điểm lần nữa
+select throws_ok(
+  format('select public.complete_draft_order(%s, %s, %L::jsonb)', (select branch_id from t_ctx),
+         (select draft_id from t_p), '{"customer_id": null, "payments": [{"method": "cash", "amount": 65000}]}'),
+  '22023', null, 'Bỏ khách khỏi đơn nháp đã đổi điểm → lỗi');
+select is(
+  (public.complete_draft_order((select branch_id from t_ctx), (select draft_id from t_p), jsonb_build_object(
+     'payments', jsonb_build_array(jsonb_build_object('method', 'cash', 'amount', 60000))))->>'final_amount')::bigint,
+  60000::bigint, 'Thanh toán đơn nháp đổi điểm: vẫn giảm 5.000 (65.000 → 60.000)');
+select is((select points from public.customers where phone = '0900000888'), 110::bigint,
+  'Điểm sau thanh toán = 50 + 60 tích mới (không trừ 50 lần nữa)');
 
 -- ---------------------------------------------------------------------------
 -- 3. Phân quyền

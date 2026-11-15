@@ -99,7 +99,7 @@ test `supabase/tests/website_advanced_test.sql` (59 test).
 |---|---|---|
 | P1 | Mỗi đơn online một nội dung CK duy nhất, không sửa được | `online_requests.transfer_code` = `OL` + 6 số id + 4 HEX ngẫu nhiên (cột generated, unique; trigger chặn sửa `pay_nonce`) |
 | P2 | Tài khoản nhận tiền chỉ chủ shop đổi | `shop_payment_settings` không cấp quyền ghi trực tiếp; RPC `save_shop_payment_settings` (owner), ghi `audit_logs` |
-| P3 | Tiền chuyển khoản vào sổ như mọi khoản thu | `confirm_online_payment` (quản lý trở lên, cần ca mở) gọi `complete_draft_order` với `bank_transfer`, `transaction_ref` = mã CK → `payments` + `cashbook` + doanh số ca |
+| P3 | Tiền chuyển khoản vào sổ như mọi khoản thu | `confirm_online_payment` (thu ngân trở lên — ngang quyền thu tiền mặt tại quầy, cần ca mở; `20261125000100`) gọi `complete_draft_order` với `bank_transfer`, `transaction_ref` = mã CK → `payments` + `cashbook` + doanh số ca |
 | N1 | Khách chỉ đọc bài đã đăng tới giờ | RLS `shop_posts` chỉ nhân viên; anon gọi `get_public_posts` / `get_public_post` (`published` và `published_at <= now()`) |
 | N2 | Bài viết và dung lượng ảnh theo gói | `subscription_plans.max_site_posts` (mặc định 50, đếm dưới khóa `shop_sites`); `storage_mb` (mặc định 200) — policy insert bucket `sites` gọi `app.can_upload_site_object` |
 

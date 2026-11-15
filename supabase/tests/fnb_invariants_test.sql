@@ -10,7 +10,7 @@ begin;
 
 set search_path = public, extensions, app;
 
-select extensions.plan(32);
+select extensions.plan(33);
 
 -- ---------------------------------------------------------------------------
 -- Dữ liệu: 1 tổ chức, 2 chi nhánh A/B; owner/manager/staff ở A, staff_b ở B
@@ -193,12 +193,19 @@ select throws_ok(
          (select branch_id from t_ctx), (select r->>'order_id' from t_sale)),
   '22023', null, 'Hoàn 60.000 cho đơn 50.000 → lỗi');
 
+create temp table t_shift_before as
+select s.id, s.total_sales from public.shifts s
+where s.id = (select shift_id from public.sales_orders where id = (select (r->>'order_id')::bigint from t_sale));
+
 select lives_ok(
   format($$select public.refund_order(%s, '{"order_id": %s, "amount": 50000, "reason": "Hoàn toàn bộ"}')$$,
          (select branch_id from t_ctx), (select r->>'order_id' from t_sale)),
   'Chủ quán hoàn 100% đơn');
 select is((select stock from public.ingredients where name = 'Gà TEST inv'), 3::numeric(18,4),
   'Hoàn 100% → tồn kho quay về đúng số trước khi bán');
+select is((select total_sales from public.shifts where id = (select id from t_shift_before)),
+  (select total_sales - 50000 from t_shift_before),
+  'Hoàn 50.000 → doanh thu ca của đơn giảm 50.000 (01-nghiep-vu §5.6)');
 select throws_ok(
   format($$select public.refund_order(%s, '{"order_id": %s, "amount": 1, "reason": "thêm"}')$$,
          (select branch_id from t_ctx), (select r->>'order_id' from t_sale)),

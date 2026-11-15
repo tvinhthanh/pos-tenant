@@ -149,7 +149,7 @@ Bổ sung pgTAP cho các bất biến chống gian lận:
 - [x] Chuỗi `balance_before`/`balance` liên tục sau N giao dịch đồng thời
 - [x] Gọi `create_sales_order` 2 lần cùng `offline_ref` → chỉ 1 đơn
 
-> Các mục trên nằm ở `supabase/tests/fnb_invariants_test.sql` (32 test). Chuỗi số
+> Các mục trên nằm ở `supabase/tests/fnb_invariants_test.sql` (33 test). Chuỗi số
 > dư kiểm sau 20 bút toán tuần tự trong một transaction — pgTAP không chạy được
 > giao dịch song song thật; tính tuần tự do `log_cashbook` khóa dòng `branches`
 > `FOR UPDATE`. Viết test phát hiện 2 lỗi, đã sửa:
@@ -161,4 +161,11 @@ Bổ sung pgTAP cho các bất biến chống gian lận:
 >   sổ kho, audit_logs) — TRUNCATE không qua RLS và trigger dòng. Sửa ở
 >   `20261122100300`: thu hồi quyền + trigger `BEFORE TRUNCATE` trên bảng append-only.
 >
-> `add_items_to_order` và `forecast_revenue`: `supabase/tests/fnb_add_items_forecast_test.sql` (26 test).
+> `add_items_to_order` và `forecast_revenue`: `supabase/tests/fnb_add_items_forecast_test.sql` (29 test).
+>
+> Sau khi gộp 4 nhánh, `20261125000100_post_merge_fixes.sql` sửa thêm:
+>
+> - **Hoàn tiền trừ `shift.total_sales`** (§5.6) — trừ vào ca của đơn, cùng ca với phiếu chi sổ quỹ.
+> - **`complete_draft_order` giữ giảm giá bằng điểm** đã đổi lúc tạo nháp (05 #11): điểm đã trừ
+>   lúc tạo nháp, không trừ lại; đổi/bỏ khách của đơn nháp đã đổi điểm → lỗi.
+> - Trigger chặn `TRUNCATE` cho cả bảng append-only tạo sau (`sales_order_discounts`, `sales_exchanges`).

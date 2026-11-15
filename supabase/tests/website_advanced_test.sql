@@ -7,7 +7,7 @@ begin;
 
 set search_path = public, extensions, app;
 
-select extensions.plan(59);
+select extensions.plan(58);
 
 -- ---------------------------------------------------------------------------
 -- Dữ liệu
@@ -152,11 +152,6 @@ select throws_ok(format('select public.confirm_online_payment(%s)', (select req 
                  'Khách không tự xác nhận đã trả tiền');
 reset role;
 
-select pg_temp.login('staff');
-set local role authenticated;
-select throws_ok(format('select public.confirm_online_payment(%s)', (select req from t)), '42501', null,
-                 'P3: thu ngân không xác nhận tiền chuyển khoản');
-reset role;
 
 select pg_temp.login('owner');
 set local role authenticated;
@@ -164,8 +159,11 @@ select public.close_shift((select b from t), 0, null);
 select throws_ok(format('select public.confirm_online_payment(%s)', (select req from t)), '22023',
                  'Vui lòng mở ca trước khi ghi nhận tiền chuyển khoản.', 'P3: cần ca đang mở');
 select public.open_shift((select b from t), 0, null);
+reset role;
+select pg_temp.login('staff');
+set local role authenticated;
 select is((public.confirm_online_payment((select req from t))->>'amount')::bigint, 20000::bigint,
-          'Quản lý xác nhận đã nhận 20.000đ');
+          'P3: thu ngân xác nhận đã nhận 20.000đ (ngang quyền thu tiền mặt tại quầy)');
 reset role;
 select is((select status::text || '/' || payment_method::text from public.sales_orders where id = (select ord from t)),
           'completed/bank_transfer', 'Đơn nháp hoàn tất, phương thức chuyển khoản');

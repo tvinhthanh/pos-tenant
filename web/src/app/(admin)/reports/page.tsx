@@ -173,11 +173,12 @@ export default function Reports() {
                     <span className="text-sm font-bold text-emerald-400 block mt-1.5">{report.net_profit.toLocaleString("vi-VN")}đ</span>
                   </div>
                   <div className="p-4 bg-slate-900/40 border border-slate-850 rounded-xl">
-                    <span className="text-[10px] text-slate-500 font-semibold block uppercase">6. Thuế HKD (ước tính)</span>
+                    <span className="text-[10px] text-slate-500 font-semibold block uppercase">6. Thuế HKD</span>
                     <span className="text-sm font-bold text-amber-500 block mt-1.5">{report.estimated_tax.toLocaleString("vi-VN")}đ</span>
                     {report.tax && (
-                      <span className="text-[10px] text-slate-500 block mt-1">
-                        GTGT {Number(report.tax.vat).toLocaleString("vi-VN")}đ · TNCN {Number(report.tax.pit).toLocaleString("vi-VN")}đ
+                      <span className="text-[10px] text-slate-500 block mt-1 leading-snug tabular-nums">
+                        <span className="block whitespace-nowrap">GTGT {Number(report.tax.vat).toLocaleString("vi-VN")}đ</span>
+                        <span className="block whitespace-nowrap">TNCN {Number(report.tax.pit).toLocaleString("vi-VN")}đ</span>
                       </span>
                     )}
                   </div>

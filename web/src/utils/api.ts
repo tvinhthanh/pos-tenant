@@ -88,6 +88,21 @@ function normalizeEmail(usernameOrEmail: string): string {
   return value.includes("@") ? value : `${value}@${INTERNAL_EMAIL_DOMAIN}`;
 }
 
+/**
+ * Ô đăng nhập nhận username hoặc email. Có "@" → dùng luôn làm email. Không có →
+ * tra profiles.username (RPC chỉ trả email khi mật khẩu đúng); không thấy thì quay
+ * về cách cũ (alias demo / <username>@<domain nội bộ>).
+ */
+async function resolveLoginEmail(login: string, password: string): Promise<string> {
+  const value = login.trim().toLowerCase();
+  if (value.includes("@")) return value;
+  if (value && password) {
+    const { data, error } = await getSupabase().rpc("resolve_login_email", { p_login: value, p_password: password });
+    if (!error && typeof data === "string" && data) return data;
+  }
+  return normalizeEmail(value);
+}
+
 function cleanPath(input: string, config?: ApiConfig): { path: string; query: URLSearchParams } {
   const url = new URL(input, "http://local");
   Object.entries(config?.params || {}).forEach(([key, value]) => {
@@ -867,7 +882,10 @@ async function post(path: string, payload?: any, _config?: ApiConfig): Promise<A
   if (path === "/api/v1/auth/login") {
     const username = payload instanceof URLSearchParams ? payload.get("username") : payload?.username;
     const password = payload instanceof URLSearchParams ? payload.get("password") : payload?.password;
-    const { data, error } = await getSupabase().auth.signInWithPassword({ email: normalizeEmail(username || ""), password: password || "" });
+    const { data, error } = await getSupabase().auth.signInWithPassword({
+      email: await resolveLoginEmail(username || "", password || ""),
+      password: password || "",
+    });
     if (error) toApiError(error);
     if (typeof window !== "undefined") localStorage.setItem("melio_token", data.session?.access_token || "");
     return asResponse({ access_token: data.session?.access_token, user: data.user });

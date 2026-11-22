@@ -139,7 +139,7 @@ Cột **Ưu tiên**: P0/P1/P2. **[DB+]**: nên bổ sung pgTAP tương ứng.
 | TC-SAAS-06 | Thuê bao hết hạn / shop `is_active=false` | Nghiệp vụ bị chặn bởi `assert_service`, UI báo hết hạn | P0 | ⏳ |
 | TC-SAAS-07 | Superadmin: danh sách cửa hàng & chủ tiệm, khóa/mở shop | Hoạt động; khóa xong owner không thao tác được | P1 | ⏳ |
 | TC-SAAS-08 | Superadmin: purge tổ chức | Xóa sạch dữ liệu org (kể cả bảng append-only), org khác không ảnh hưởng | P1 | ✅ DB |
-| TC-SAAS-09 | Superadmin: thống kê hệ thống, audit logs | Số liệu khớp DB; lọc theo ngày/tổ chức | P2 | 🟡 UI (BUG-02 đã sửa; xem BUG-09) |
+| TC-SAAS-09 | Superadmin: thống kê hệ thống, audit logs | Số liệu khớp DB; lọc theo ngày/tổ chức | P2 | 🟡 UI + ✅ DB (BUG-02, BUG-09 đã sửa) |
 
 ### 6.3 Nhân viên (`/users`, `StaffShopsMatrix`, Edge Function `manage-branch-user`)
 
@@ -564,7 +564,7 @@ Mỗi vòng ghi vào bảng: `ID | Env | Người test | Ngày | Pass/Fail/Block
 | BUG-07 | Low | TC-RPT-09 | Dashboard ghi "Biên quỹ quỹ" (lặp chữ). | `web/src/app/(admin)/page.tsx:222` |
 | BUG-08 | Low | TC-MENU-01 | Món chưa có ảnh hiện ảnh mặc định là ly sữa lắc → dễ nhầm món. | POS thực đơn |
 | PERF-01 | Low | §8.6 | Mỗi trang gọi lặp `GET /auth/v1/user` và `profiles?id=eq…` hàng chục lần. | Auth/profile hooks |
-| BUG-09 | Medium | TC-SAAS-09 | Có sẵn từ trước: thống kê hệ thống tải từng dòng `sales_orders` / `refunds` rồi cộng ở trình duyệt, mà PostgREST giới hạn `max_rows = 1000` → hệ thống quá 1000 đơn sẽ đếm thiếu đơn và doanh thu. Cần RPC tổng hợp ở DB. | `web/src/utils/api.ts` (`getSuperStats`) |
+| BUG-09 | Medium | TC-SAAS-09 | Có sẵn từ trước: thống kê hệ thống tải từng dòng `sales_orders` / `refunds` rồi cộng ở trình duyệt, mà PostgREST giới hạn `max_rows = 1000` → hệ thống quá 1000 đơn sẽ đếm thiếu đơn và doanh thu. Cần RPC tổng hợp ở DB. | `web/src/utils/api.ts` (`getSuperStats`) — **Đã sửa**: RPC `get_super_order_stats` (migration `20261128000100`, chỉ superadmin) tổng hợp số đơn, doanh thu thuần (`final_amount − Σ refunds`), 6 tháng gần nhất (giờ VN) và theo tổ chức ngay trong DB; `getSuperStats` gọi RPC. pgTAP `super_order_stats_test.sql`: hoàn hết / hoàn một phần, chặn non-superadmin, 1.504 đơn đếm đủ. |
 
 ### 14.4 Khoảng trống / cần chốt nghiệp vụ
 
@@ -576,6 +576,6 @@ Mỗi vòng ghi vào bảng: `ID | Env | Người test | Ngày | Pass/Fail/Block
 
 ### 14.5 Việc tiếp theo
 
-1. ~~Sửa BUG-01, BUG-02~~ — đã sửa và kiểm lại (TC-AUTH-03 pass, TC-SAAS-09 doanh thu đúng). Còn BUG-09 (giới hạn 1000 dòng).
+1. ~~Sửa BUG-01, BUG-02~~ — đã sửa và kiểm lại (TC-AUTH-03 pass, TC-SAAS-09 doanh thu đúng). BUG-09 (giới hạn 1000 dòng) đã sửa bằng RPC tổng hợp ở DB.
 2. Vòng 2: các ca ⏳ P0 còn lại — PIN (TC-PIN-02/03), voucher/điểm (TC-POS-05..09), offline (TC-OFF-01/02/04), nhập kho / NCC qua UI (TC-INV-01..03), race §8.2, vai trò manager + staff bán lẻ/cho thuê ở §5.
 3. Viết Playwright cho các luồng đã chạy tay ở vòng này (đăng nhập + PIN, mở ca → bán → hủy → đóng ca, ma trận quyền).

@@ -5,7 +5,7 @@ begin;
 
 set search_path = public, extensions, app;
 
-select extensions.plan(13);
+select extensions.plan(21);
 
 create temp table t as
 with org as (
@@ -37,6 +37,17 @@ from t, lateral (values (super_id, 'super'), (owner_id, 'owner')) u(id, r);
 update public.profiles p set organization_id = t.org_id, branch_id = t.branch, role = 'owner', is_active = true
 from t where p.id = t.owner_id;
 insert into public.platform_admins (user_id) select super_id from t;
+
+-- Org 1 có 2 chi nhánh; org 2 ngừng hoạt động
+insert into public.branches (organization_id, name, is_active, business_type)
+select org_id, 'TEST stats F&B 1b', true, 'fnb' from t;
+update public.organizations set is_active = false where id = (select org2_id from t);
+-- Gói: 2 còn hạn, 1 hết hạn, 1 bị treo → chỉ 2 tính là đang hoạt động
+insert into public.subscriptions (organization_id, branch_id, service_code, status, expires_at)
+select org_id, branch, 'pos_fb'::app.service_code, 'active'::app.subscription_status, now() + interval '30 days' from t
+union all select org_id, null, 'cashbook', 'active', now() + interval '30 days' from t
+union all select org_id, null, 'inventory', 'active', now() - interval '1 day' from t
+union all select org_id, null, 'crm_loyalty', 'suspended', now() + interval '30 days' from t;
 
 create or replace function pg_temp.sale(p_org bigint, p_branch bigint, p_amount bigint,
   p_status app.order_status default 'completed', p_at timestamptz default now())
@@ -95,7 +106,19 @@ select is((select (x->'monthly_revenue'->5->>'revenue')::bigint from s1), 280000
 select is((select jsonb_array_length(x->'org_stats') from s1), 1,
   'Lọc theo p_org_id chỉ trả tổ chức đó');
 
+select is((select x->>'total_orgs' from s1), '1', 'Lọc theo tổ chức: 1 tổ chức');
+select is((select x->>'total_branches' from s1), '2', 'Đếm chi nhánh ở DB');
+select is((select x->>'total_users' from s1), '1', 'Đếm người dùng của tổ chức (không tính superadmin)');
+select is((select x->>'active_subscriptions' from s1), '2', 'Chỉ đếm gói active còn hạn');
+select is((select (x->'org_stats'->0->>'users')::int from s1), 1, 'org_stats có số người dùng');
+
 create temp table s_all as select public.get_super_order_stats() as x;
+select ok((select (x->>'total_orgs')::bigint - (x->>'total_orgs_active')::bigint >= 1 from s_all),
+  'Toàn hệ thống: tổ chức ngừng hoạt động không tính vào total_orgs_active');
+select is((select (r->>'users')::int
+             from s_all, jsonb_array_elements(x->'org_stats') r
+            where (r->>'organization_id')::bigint = (select org2_id from t)), 0,
+  'Tổ chức chưa có người dùng vẫn có trong org_stats');
 select is((select (r->>'revenue')::bigint
              from s_all, jsonb_array_elements(x->'org_stats') r
             where (r->>'organization_id')::bigint = (select org2_id from t)), 999000::bigint,
@@ -127,6 +150,13 @@ select is((select (x->>'total_orders')::bigint from (select pg_temp.stats() as x
   'Quá 1000 đơn vẫn đếm đủ');
 select is((select (x->>'total_revenue')::bigint from (select pg_temp.stats() as x) s), 1850000::bigint,
   'Quá 1000 đơn vẫn cộng đủ doanh thu');
+
+reset role;
+insert into public.branches (organization_id, name, is_active, business_type)
+select org_id, 'TEST stats bulk ' || i, true, 'fnb' from t, generate_series(1, 1200) i;
+set local role authenticated;
+select is((select x->>'total_branches' from (select pg_temp.stats() as x) s), '1202',
+  'Quá 1000 chi nhánh vẫn đếm đủ');
 
 -- ---------------------------------------------------------------------------
 -- 4. Không phải superadmin → bị chặn

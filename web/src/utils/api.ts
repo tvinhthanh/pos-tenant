@@ -410,47 +410,35 @@ async function getSuperStats(orgId: number | null) {
     };
   }
 
-  // Số đơn / doanh thu tổng hợp ở DB (RPC get_super_order_stats) — tải từng dòng
-  // sales_orders qua PostgREST sẽ bị cắt ở max_rows = 1000 (BUG-09).
-  const [branchesResult, usersResult, subscriptionsResult, orderStatsResult] = await Promise.all([
-    getSupabase().from("branches").select("id, organization_id").in("organization_id", orgIds.length ? orgIds : [-1]),
-    getSupabase().from("profiles").select("id, organization_id, role").in("organization_id", orgIds.length ? orgIds : [-1]),
-    getSupabase()
-      .from("subscriptions")
-      .select("id, organization_id")
-      .in("organization_id", orgIds.length ? orgIds : [-1])
-      .eq("status", "active")
-      .gt("expires_at", new Date().toISOString()),
-    getSupabase().rpc("get_super_order_stats", { p_org_id: orgId }),
-  ]);
+  // Mọi phép đếm / cộng tổng hợp ở DB (RPC get_super_order_stats) — tải từng dòng
+  // qua PostgREST sẽ bị cắt ở max_rows = 1000 (BUG-09).
+  const { data: statsData, error: statsError } = await getSupabase().rpc("get_super_order_stats", { p_org_id: orgId });
+  if (statsError) toApiError(statsError);
 
-  if (branchesResult.error) toApiError(branchesResult.error);
-  if (usersResult.error) toApiError(usersResult.error);
-  if (subscriptionsResult.error) toApiError(subscriptionsResult.error);
-  if (orderStatsResult.error) toApiError(orderStatsResult.error);
-
-  const branches = branchesResult.data || [];
-  const users = (usersResult.data || []).filter((user: any) => user.role !== "superadmin");
-  const activeSubscriptions = subscriptionsResult.data || [];
   // Doanh thu thuần = thành tiền − tiền đã hoàn (tính trong RPC).
-  const orderStats = (orderStatsResult.data || {}) as {
+  const stats = (statsData || {}) as {
+    total_orgs?: number;
+    total_orgs_active?: number;
+    total_branches?: number;
+    total_users?: number;
+    active_subscriptions?: number;
     total_orders?: number;
     total_revenue?: number;
     monthly_revenue?: { label: string; revenue: number }[];
-    org_stats?: { organization_id: number; orders: number; revenue: number }[];
+    org_stats?: { organization_id: number; users: number; orders: number; revenue: number }[];
   };
-  const orderStatsByOrg = new Map((orderStats.org_stats || []).map((row) => [Number(row.organization_id), row]));
+  const statsByOrg = new Map((stats.org_stats || []).map((row) => [Number(row.organization_id), row]));
 
   return {
     scope: orgId ? "organization" : "system",
-    total_orgs: orgs?.length || 0,
-    total_orgs_active: (orgs || []).filter((org: any) => org.is_active).length,
-    total_branches: branches.length,
-    total_users: users.length,
-    total_orders: Number(orderStats.total_orders || 0),
-    total_revenue: Number(orderStats.total_revenue || 0),
-    active_subscriptions: activeSubscriptions.length,
-    monthly_revenue: (orderStats.monthly_revenue || []).map((row) => ({
+    total_orgs: Number(stats.total_orgs || 0),
+    total_orgs_active: Number(stats.total_orgs_active || 0),
+    total_branches: Number(stats.total_branches || 0),
+    total_users: Number(stats.total_users || 0),
+    total_orders: Number(stats.total_orders || 0),
+    total_revenue: Number(stats.total_revenue || 0),
+    active_subscriptions: Number(stats.active_subscriptions || 0),
+    monthly_revenue: (stats.monthly_revenue || []).map((row) => ({
       label: row.label,
       revenue: Number(row.revenue || 0),
     })),
@@ -459,9 +447,9 @@ async function getSuperStats(orgId: number | null) {
       name: org.name,
       is_active: org.is_active,
       plan: org.subscription_plans?.name || org.subscription_plans?.[0]?.name || "—",
-      users: users.filter((user: any) => user.organization_id === org.id).length,
-      orders: Number(orderStatsByOrg.get(org.id)?.orders || 0),
-      revenue: Number(orderStatsByOrg.get(org.id)?.revenue || 0),
+      users: Number(statsByOrg.get(org.id)?.users || 0),
+      orders: Number(statsByOrg.get(org.id)?.orders || 0),
+      revenue: Number(statsByOrg.get(org.id)?.revenue || 0),
     })),
   };
 }

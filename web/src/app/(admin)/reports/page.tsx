@@ -8,7 +8,8 @@ import SalesBreakdown from "@/components/SalesBreakdown";
 import RevenueForecast from "@/components/RevenueForecast";
 import { toast } from "@/components/Toaster";
 import { exportReportExcel } from "@/utils/fnb";
-import { Calendar, ArrowRight, ShieldCheck, FileSpreadsheet } from "lucide-react";
+import { ShieldCheck, FileSpreadsheet } from "lucide-react";
+import DateRangePicker from "@/components/DateRangePicker";
 
 /** Một năm trong chi tiết thuế hộ kinh doanh (get_financial_report.tax.years). */
 type TaxYear = {
@@ -110,24 +111,18 @@ export default function Reports() {
                   );
                 })}
               </div>
-              <div className="flex items-center space-x-2 bg-slate-900 border border-slate-800 p-2 rounded-xl text-xs">
-                <Calendar className="w-4 h-4 text-slate-500" />
-                <input 
-                  type="date" 
-                  value={startDate} 
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="bg-transparent text-slate-300 focus:outline-none" 
-                />
-                <ArrowRight className="w-3.5 h-3.5 text-slate-650" />
-                <input 
-                  type="date" 
-                  value={endDate} 
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="bg-transparent text-slate-300 focus:outline-none" 
-                />
+              <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 p-1.5 rounded-xl text-xs">
+                <div className="min-w-0 flex-1">
+                  <DateRangePicker
+                    from={startDate}
+                    to={endDate}
+                    presets={quickRanges()}
+                    onChange={(f, t) => { setStartDate(f); setEndDate(t); }}
+                  />
+                </div>
                 <button
                   onClick={() => refetchReport()}
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg font-semibold transition-all shrink-0 ml-2"
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg font-semibold transition-all shrink-0"
                 >
                   Lọc
                 </button>
@@ -138,7 +133,8 @@ export default function Reports() {
                   title="Xuất Excel 5 sheet: tổng quan, bán hàng, kết ca, chi phí, tồn kho"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5" />
-                  {exporting ? "Đang xuất..." : "Xuất Excel"}
+                  <span className="hidden sm:inline">{exporting ? "Đang xuất..." : "Xuất Excel"}</span>
+                  <span className="sm:hidden">{exporting ? "…" : "Excel"}</span>
                 </button>
               </div>
               </div>

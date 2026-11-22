@@ -10,6 +10,17 @@ import { toast } from "@/components/Toaster";
 import { exportReportExcel } from "@/utils/fnb";
 import { Calendar, ArrowRight, ShieldCheck, FileSpreadsheet } from "lucide-react";
 
+/** Một năm trong chi tiết thuế hộ kinh doanh (get_financial_report.tax.years). */
+type TaxYear = {
+  year: number;
+  household_revenue: number;
+  exempt_threshold: number;
+  exceeded: boolean;
+  vat_rate: number;
+  pit_rate: number;
+  pit_reduction_pct: number;
+};
+
 
 // toISOString() đổi sang UTC nên ở múi giờ +07 sẽ lùi 1 ngày với mốc nửa đêm.
 // Ngày mặc định của bộ lọc phải là ngày địa phương.
@@ -162,16 +173,35 @@ export default function Reports() {
                     <span className="text-sm font-bold text-emerald-400 block mt-1.5">{report.net_profit.toLocaleString("vi-VN")}đ</span>
                   </div>
                   <div className="p-4 bg-slate-900/40 border border-slate-850 rounded-xl">
-                    <span className="text-[10px] text-slate-500 font-semibold block uppercase">6. Thuế khoán HKD</span>
+                    <span className="text-[10px] text-slate-500 font-semibold block uppercase">6. Thuế HKD (ước tính)</span>
                     <span className="text-sm font-bold text-amber-500 block mt-1.5">{report.estimated_tax.toLocaleString("vi-VN")}đ</span>
+                    {report.tax && (
+                      <span className="text-[10px] text-slate-500 block mt-1">
+                        GTGT {Number(report.tax.vat).toLocaleString("vi-VN")}đ · TNCN {Number(report.tax.pit).toLocaleString("vi-VN")}đ
+                      </span>
+                    )}
                   </div>
                 </div>
 
                 <div className="p-4 bg-indigo-500/5 border border-indigo-500/15 rounded-xl text-xs text-slate-400 flex items-start space-x-2.5">
                   <ShieldCheck className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
-                  <span>
-                    <strong>Hỗ trợ chuẩn bị Thuế:</strong> Chỉ tiêu số 6 (Thuế khoán HKD) được ước tính bằng <strong>1.5% doanh thu</strong> đối với mô hình kinh doanh ăn uống & thương mại bán lẻ tại Việt Nam (gồm 1% Thuế GTGT và 0.5% Thuế TNCN). Số liệu này giúp bạn kê khai tờ khai thuế hộ kinh doanh cực kỳ dễ dàng.
-                  </span>
+                  <div className="space-y-1">
+                    <p>
+                      <strong>Hỗ trợ chuẩn bị Thuế:</strong> chỉ tiêu số 6 ước tính theo quy định từ 01/01/2026 (đã bỏ thuế khoán).
+                      Doanh thu năm của cả hộ (mọi shop) từ 1 tỷ đồng trở xuống không chịu thuế. Vượt ngưỡng: GTGT tính trên toàn bộ
+                      doanh thu, TNCN tính trên phần vượt 1 tỷ; năm 2026–2027 được giảm 30% TNCN. Tỷ lệ theo ngành: ăn uống 3% + 1,5%,
+                      bán lẻ 1% + 0,5%, cho thuê tài sản 5% + 5%.
+                    </p>
+                    {((report.tax?.years ?? []) as TaxYear[]).map((y) => (
+                      <p key={y.year}>
+                        Năm {y.year}: doanh thu cả hộ {y.household_revenue.toLocaleString("vi-VN")}đ
+                        {y.exceeded
+                          ? ` — vượt ngưỡng ${y.exempt_threshold.toLocaleString("vi-VN")}đ, áp GTGT ${+(y.vat_rate * 100).toFixed(2)}% + TNCN ${+(y.pit_rate * 100).toFixed(2)}%${y.pit_reduction_pct > 0 ? `, giảm ${y.pit_reduction_pct}% TNCN` : ""}.`
+                          : ` — chưa vượt ngưỡng ${y.exempt_threshold.toLocaleString("vi-VN")}đ, chưa phải nộp.`}
+                      </p>
+                    ))}
+                    <p className="text-slate-500">Số ước tính để chuẩn bị kê khai — kế toán chốt số nộp thật.</p>
+                  </div>
                 </div>
               </div>
             )}

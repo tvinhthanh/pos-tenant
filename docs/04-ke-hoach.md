@@ -53,12 +53,13 @@ ngưỡng duyệt. Đây là trọng tâm chống gian lận của hệ thống.
 | 3.3 | Edge Function `export-report` — Excel 5 sheet | ✅ `supabase/functions/export-report` (chạy bằng JWT người gọi) |
 | 3.4 | RPC `forecast_revenue` — hồi quy tuyến tính + hệ số ngày trong tuần, thuần SQL | ✅ `20261122100200` |
 
-> ⚠️ **Thuế khoán cần chốt lại**: `get_financial_report` đang tính
-> `estimated_tax = 1.5% doanh thu thuần` (1% GTGT + 0,5% TNCN — nhóm *phân phối,
-> cung cấp hàng hóa*), khớp với chú thích trên màn hình Báo cáo. Nhưng
-> `05-van-de-phat-hien.md` #26 ghi **3%**. TT 40/2021/TT-BTC xếp *dịch vụ ăn
-> uống* vào nhóm 3% GTGT + 1,5% TNCN = **4,5%**. Ba con số đang không khớp nhau —
-> chủ quán/kế toán phải chốt tỷ lệ đúng trước khi dùng số này để kê khai.
+> ✅ **Thuế hộ kinh doanh** (`20261126000100_household_tax.sql`, thay "1,5% doanh thu" cố định):
+> từ 01/01/2026 bỏ thuế khoán (NQ 198/2025/QH15). Doanh thu năm của **cả hộ** (mọi shop của tổ chức)
+> ≤ 1 tỷ → không chịu thuế (NĐ 141/2026). Vượt ngưỡng: GTGT = tỷ lệ × toàn bộ doanh thu, TNCN = tỷ lệ ×
+> (doanh thu − 1 tỷ) (NĐ 68/2026); 2026–2027 giảm 30% TNCN (NĐ 398/2026). Tỷ lệ theo `business_type`:
+> ăn uống 3% + 1,5%, bán lẻ 1% + 0,5%, cho thuê tài sản 5% + 5%. Năm trước 2026 dùng quy tắc TT40.
+> Tỷ lệ / ngưỡng nằm trong `app.household_tax_policies` / `app.household_tax_rates` có ngày hiệu lực —
+> luật đổi thì thêm dòng. Số liệu là ước tính; kế toán cần xác nhận, nhất là 5% + 5% cho cho thuê đồ.
 
 ---
 

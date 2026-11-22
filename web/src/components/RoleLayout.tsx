@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import AdminLayout from "@/components/AdminLayout";
 import ScreenLock from "@/components/ScreenLock";
 import api from "@/utils/api";
-import { staffCanOpen } from "@/components/Sidebar";
+import { staffCanOpen } from "@/utils/nav";
 
 type CurrentUser = {
   id: string;

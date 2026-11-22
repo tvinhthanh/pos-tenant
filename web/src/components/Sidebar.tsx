@@ -3,49 +3,12 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import {
-  LayoutDashboard, ShoppingCart, Package, DollarSign,
-  Users, BarChart3, LogOut, Coffee, ShieldCheck, User, X,
-  Map, History, Megaphone, Scale, Store, UtensilsCrossed, Settings,
-  LayoutGrid, FileText, Boxes, PieChart, Undo2, PackagePlus, ClipboardCheck, Globe, Inbox,
-  CalendarDays
-} from "lucide-react";
+import { LogOut, Coffee, ShieldCheck, User, X } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import api, { supabase } from "@/utils/api";
 import { getBranchProfile } from "@/utils/rpc";
 import { BUSINESS_TYPE_LABELS, type BusinessType } from "@/utils/shop";
-
-// Màn hình chỉ có nghĩa với một số nghiệp vụ. Không có trong bảng = mọi nghiệp vụ.
-// (Chỉ ẩn menu; DB tự chặn RPC sai nghiệp vụ trong app.assert_service.)
-const PATHS_BY_BUSINESS: Record<string, BusinessType[]> = {
-  "/tables": ["fnb"],
-  "/pos": ["fnb"],
-  "/menu": ["fnb"],
-  "/inventory": ["fnb"],
-  "/inventory/adjustments": ["fnb", "retail"],
-  "/suppliers": ["fnb", "retail"],
-  "/rental": ["rental"],
-  "/rental/contracts": ["rental"],
-  "/rental/catalog": ["rental"],
-  "/rental/calendar": ["rental"],
-  "/rental/report": ["rental"],
-  "/retail": ["retail"],
-  "/retail/returns": ["retail"],
-  "/retail/products": ["retail"],
-  "/retail/receive": ["retail"],
-  "/retail/stocktake": ["retail"],
-  "/retail/report": ["retail"],
-};
-
-// Màn nhân viên (thu ngân) được vào, theo nghiệp vụ. RoleLayout dùng cùng hàm này.
-const STAFF_PATHS: Partial<Record<BusinessType, string[]>> = {
-  fnb: ["/pos", "/online"],
-  retail: ["/retail", "/retail/returns", "/retail/stocktake", "/online"],
-};
-export const staffCanOpen = (type: BusinessType | null | undefined, path: string) => {
-  if (type === "rental") return (path.startsWith("/rental") && !path.startsWith("/rental/report")) || path === "/online";
-  return (STAFF_PATHS[type ?? "fnb"] ?? []).includes(path);
-};
+import { getNavGroups } from "@/utils/nav";
 
 interface SidebarProps {
   isOpen: boolean;
@@ -77,16 +40,8 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
     window.location.reload();
   };
 
-  const isOwner = user?.role === "owner" || user?.role === "superadmin";
   const isSuperadmin = user?.role === "superadmin";
-  // Quản lý một shop cũng được tạo tài khoản staff cho shop đó.
-  const canManageUsers = isOwner || user?.role === "manager";
   const businessType: BusinessType = user?.business_type ?? "fnb";
-  const isStaff = user?.role === "staff";
-  // Nhân viên chỉ thấy các màn làm việc tại quầy của nghiệp vụ shop (RoleLayout cũng chặn).
-  const allowedHere = (path: string) =>
-    (!PATHS_BY_BUSINESS[path] || PATHS_BY_BUSINESS[path].includes(businessType)) &&
-    (!isStaff || staffCanOpen(businessType, path));
 
   // Tên quán lấy từ trang "Thông tin quán" (hoặc tên cửa hàng), không viết cứng
   const { data: branchProfile } = useQuery({
@@ -98,63 +53,7 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
     ? "POS Admin"
     : branchProfile?.receipt_name || user?.shop_name || branchProfile?.organization_name || "POS";
 
-  const navGroups = isSuperadmin ? [
-    {
-      title: "SaaS Admin",
-      items: [
-        { name: "Cửa hàng & Chủ tiệm", path: "/superadmin/stores", icon: Store },
-        { name: "Thống kê hệ thống", path: "/superadmin/stats", icon: BarChart3 },
-        { name: "Audit logs", path: "/superadmin/audit-logs", icon: History },
-      ]
-    }
-  ] : [
-    {
-      title: "Quản lý quán",
-      items: [
-        { name: "Tổng quan", path: "/", icon: LayoutDashboard },
-        { name: "Khu vực & Bàn", path: "/tables", icon: Map },
-        ...(canManageUsers ? [{ name: "Nhân viên", path: "/users", icon: User }] : []),
-        ...(canManageUsers ? [{ name: "Website", path: "/website", icon: Globe }] : []),
-        { name: "Đơn online", path: "/online", icon: Inbox },
-        { name: "Thông tin quán", path: "/settings", icon: Settings },
-      ]
-    },
-    {
-      title: businessType === "rental" ? "Cho thuê" : "Bán hàng & Kho",
-      items: [
-        { name: "Bảng cho thuê", path: "/rental", icon: LayoutGrid },
-        { name: "Hợp đồng thuê", path: "/rental/contracts", icon: FileText },
-        { name: "Lịch cho thuê", path: "/rental/calendar", icon: CalendarDays },
-        { name: "Danh mục cho thuê", path: "/rental/catalog", icon: Boxes },
-        { name: "Bán hàng", path: "/retail", icon: ShoppingCart },
-        { name: "Trả hàng", path: "/retail/returns", icon: Undo2 },
-        { name: "Sản phẩm", path: "/retail/products", icon: Package },
-        { name: "Nhập hàng", path: "/retail/receive", icon: PackagePlus },
-        { name: "Kiểm kê", path: "/retail/stocktake", icon: ClipboardCheck },
-        { name: "POS Bán hàng", path: "/pos", icon: ShoppingCart },
-        { name: "Thực đơn & Tùy chọn", path: "/menu", icon: UtensilsCrossed },
-        { name: "Kho & Định lượng", path: "/inventory", icon: Package },
-        { name: "Điều chỉnh kho", path: "/inventory/adjustments", icon: Scale },
-      ]
-    },
-    {
-      title: "Tài chính & Đối tác",
-      items: [
-        { name: "Chi phí & Sổ quỹ", path: "/expenses", icon: DollarSign },
-        { name: "Công nợ & NCC", path: "/suppliers", icon: Users },
-        { name: "Marketing & Loyalty", path: "/marketing", icon: Megaphone },
-      ]
-    },
-    {
-      title: "Báo cáo",
-      items: [
-        { name: "Báo cáo cho thuê", path: "/rental/report", icon: PieChart },
-        { name: "Báo cáo bán lẻ", path: "/retail/report", icon: PieChart },
-        { name: "Báo cáo & Thuế", path: "/reports", icon: BarChart3 },
-        { name: "Lịch sử ca", path: "/shifts", icon: History },
-      ]
-    }
-  ];
+  const navGroups = getNavGroups(user?.role, businessType);
 
   return (
     <aside 
@@ -187,10 +86,7 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
 
         {/* Navigation List */}
         <nav className="mt-6 px-4 space-y-6 flex-1">
-          {navGroups
-            .map((group) => ({ ...group, items: group.items.filter((item) => allowedHere(item.path)) }))
-            .filter((group) => group.items.length > 0)
-            .map((group) => (
+          {navGroups.map((group) => (
             <div key={group.title} className="space-y-2">
               <span className="text-[10px] font-bold text-slate-600 uppercase tracking-widest px-3.5 block">
                 {group.title}

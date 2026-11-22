@@ -94,6 +94,8 @@ function CalendarPopover({
   const single = mode === "single";
   const [open, setOpen] = useState(false);
   const [month, setMonth] = useState(() => startOfMonth(new Date()));
+  // Số tháng hiện cùng lúc — quyết định một lần khi mở (desktop 2, mobile/1 ngày 1)
+  const [twoMonths, setTwoMonths] = useState(false);
   // Đang chọn dở: đã có ngày đầu, chờ ngày cuối (bấm lần 2 hoặc thả tay khi kéo)
   const [anchor, setAnchor] = useState<string | null>(null);
   const [hover, setHover] = useState<string | null>(null);
@@ -166,9 +168,10 @@ function CalendarPopover({
   function toggle() {
     if (open) return close();
     // Khoảng ngày trên desktop hiện 2 tháng: tháng trước + tháng của ngày cuối
-    const twoMonths = !single && window.matchMedia("(min-width: 768px)").matches;
+    const two = !single && window.matchMedia("(min-width: 768px)").matches;
     const base = to || clamp(todayYmd());
-    setMonth(addMonths(startOfMonth(fromYmd(base)), twoMonths ? -1 : 0));
+    setTwoMonths(two);
+    setMonth(addMonths(startOfMonth(fromYmd(base)), two ? -1 : 0));
     setOpen(true);
   }
 
@@ -213,7 +216,7 @@ function CalendarPopover({
     if (dragMoved.current && a && h) commit(a, h);
   }
 
-  const months = single ? [month] : [month, addMonths(month, 1)];
+  const months = twoMonths ? [month, addMonths(month, 1)] : [month];
   const lastShown = months[months.length - 1];
   const canPrev = toYmd(addMonths(month, 0)) > min;
   const canNext = toYmd(addMonths(lastShown, 1)) <= max;
@@ -276,7 +279,7 @@ function CalendarPopover({
                 {months.map((m, i) => {
                   const isLast = i === months.length - 1;
                   return (
-                    <div key={toYmd(m)} className={i === 1 ? "hidden md:block" : ""}>
+                    <div key={toYmd(m)}>
                       <div className="mb-2 flex h-8 items-center justify-between">
                         {i === 0 ? (
                           <button type="button" onClick={() => setMonth(addMonths(month, -1))} aria-label="Tháng trước" disabled={!canPrev}
@@ -285,12 +288,12 @@ function CalendarPopover({
                           </button>
                         ) : <span className="w-7" />}
                         <span className="text-xs font-bold text-slate-200">Tháng {m.getMonth() + 1}/{m.getFullYear()}</span>
-                        {/* "Tháng sau" nằm ở tháng cuối đang hiện; mobile chỉ hiện tháng đầu nên tháng đầu cũng có */}
-                        <button type="button" onClick={() => setMonth(addMonths(month, 1))} aria-label="Tháng sau" disabled={!canNext}
-                          className={`rounded-lg p-1.5 text-slate-400 hover:bg-slate-900 hover:text-slate-100 disabled:opacity-30 ${
-                            isLast ? "" : "md:invisible"}`}>
-                          <ChevronRight className="h-4 w-4" />
-                        </button>
+                        {isLast ? (
+                          <button type="button" onClick={() => setMonth(addMonths(month, 1))} aria-label="Tháng sau" disabled={!canNext}
+                            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-900 hover:text-slate-100 disabled:opacity-30">
+                            <ChevronRight className="h-4 w-4" />
+                          </button>
+                        ) : <span className="w-7" />}
                       </div>
                       <MonthGrid
                         month={m} selFrom={selFrom} selTo={selTo} allowed={allowed} today={todayYmd()}

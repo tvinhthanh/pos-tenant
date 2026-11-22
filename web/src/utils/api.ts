@@ -122,6 +122,25 @@ export function toApiError(error: any): never {
   throw wrapped;
 }
 
+// Supabase Auth trả lỗi tiếng Anh ("Invalid login credentials"). Đổi theo mã lỗi
+// sang tiếng Việt. Sai tên đăng nhập và sai mật khẩu dùng chung một câu để
+// không lộ tài khoản nào có thật.
+function loginErrorMessage(error: any): string {
+  const code = String(error?.code || "");
+  if (code === "invalid_credentials" || /invalid login credentials/i.test(error?.message || "")) {
+    return "Tên đăng nhập hoặc mật khẩu không đúng.";
+  }
+  if (code === "email_not_confirmed") return "Tài khoản chưa được xác nhận email.";
+  if (code === "user_banned") return "Tài khoản đã bị khóa. Liên hệ chủ quán để mở lại.";
+  if (code.startsWith("over_") || error?.status === 429) {
+    return "Đăng nhập sai quá nhiều lần. Vui lòng thử lại sau ít phút.";
+  }
+  if (!error?.status || error?.name === "AuthRetryableFetchError") {
+    return "Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại.";
+  }
+  return "Đăng nhập thất bại. Vui lòng thử lại.";
+}
+
 function throwApiError(message: string, status = 400): never {
   const error: any = new Error(message);
   error.response = { data: { detail: message }, status };
@@ -341,10 +360,6 @@ function toRangeEnd(value: string | null): string | null {
   return value ? new Date(`${value}T23:59:59.999`).toISOString() : null;
 }
 
-function monthLabel(value: Date) {
-  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}`;
-}
-
 async function getFinancialReport(branchId: number, from: string | null, to: string | null) {
   const { data, error } = await getSupabase().rpc("get_financial_report", {
     p_branch_id: branchId,
@@ -395,67 +410,46 @@ async function getSuperStats(orgId: number | null) {
     };
   }
 
-  const [branchesResult, usersResult, ordersResult, subscriptionsResult] = await Promise.all([
-    getSupabase().from("branches").select("id, organization_id").in("organization_id", orgIds.length ? orgIds : [-1]),
-    getSupabase().from("profiles").select("id, organization_id, role").in("organization_id", orgIds.length ? orgIds : [-1]),
-    getSupabase()
-      .from("sales_orders")
-      .select("organization_id, final_amount, status, date")
-      .in("organization_id", orgIds.length ? orgIds : [-1])
-      .in("status", ["completed", "partially_refunded", "refunded"]),
-    getSupabase()
-      .from("subscriptions")
-      .select("id, organization_id")
-      .in("organization_id", orgIds.length ? orgIds : [-1])
-      .eq("status", "active")
-      .gt("expires_at", new Date().toISOString()),
-  ]);
+  // Mọi phép đếm / cộng tổng hợp ở DB (RPC get_super_order_stats) — tải từng dòng
+  // qua PostgREST sẽ bị cắt ở max_rows = 1000 (BUG-09).
+  const { data: statsData, error: statsError } = await getSupabase().rpc("get_super_order_stats", { p_org_id: orgId });
+  if (statsError) toApiError(statsError);
 
-  if (branchesResult.error) toApiError(branchesResult.error);
-  if (usersResult.error) toApiError(usersResult.error);
-  if (ordersResult.error) toApiError(ordersResult.error);
-  if (subscriptionsResult.error) toApiError(subscriptionsResult.error);
-
-  const branches = branchesResult.data || [];
-  const users = (usersResult.data || []).filter((user: any) => user.role !== "superadmin");
-  const orders = ordersResult.data || [];
-  const activeSubscriptions = subscriptionsResult.data || [];
-  const totalRevenue = orders.reduce((sum: number, order: any) => sum + Number(order.final_amount || 0), 0);
-
-  const monthlyRevenueMap = new Map<string, number>();
-  for (let i = 5; i >= 0; i -= 1) {
-    const date = new Date();
-    date.setMonth(date.getMonth() - i, 1);
-    monthlyRevenueMap.set(monthLabel(date), 0);
-  }
-  orders.forEach((order: any) => {
-    if (!order.date) return;
-    const label = monthLabel(new Date(order.date));
-    if (monthlyRevenueMap.has(label)) {
-      monthlyRevenueMap.set(label, (monthlyRevenueMap.get(label) || 0) + Number(order.final_amount || 0));
-    }
-  });
+  // Doanh thu thuần = thành tiền − tiền đã hoàn (tính trong RPC).
+  const stats = (statsData || {}) as {
+    total_orgs?: number;
+    total_orgs_active?: number;
+    total_branches?: number;
+    total_users?: number;
+    active_subscriptions?: number;
+    total_orders?: number;
+    total_revenue?: number;
+    monthly_revenue?: { label: string; revenue: number }[];
+    org_stats?: { organization_id: number; users: number; orders: number; revenue: number }[];
+  };
+  const statsByOrg = new Map((stats.org_stats || []).map((row) => [Number(row.organization_id), row]));
 
   return {
     scope: orgId ? "organization" : "system",
-    total_orgs: orgs?.length || 0,
-    total_orgs_active: (orgs || []).filter((org: any) => org.is_active).length,
-    total_branches: branches.length,
-    total_users: users.length,
-    total_orders: orders.length,
-    total_revenue: totalRevenue,
-    active_subscriptions: activeSubscriptions.length,
-    monthly_revenue: Array.from(monthlyRevenueMap.entries()).map(([label, revenue]) => ({ label, revenue })),
+    total_orgs: Number(stats.total_orgs || 0),
+    total_orgs_active: Number(stats.total_orgs_active || 0),
+    total_branches: Number(stats.total_branches || 0),
+    total_users: Number(stats.total_users || 0),
+    total_orders: Number(stats.total_orders || 0),
+    total_revenue: Number(stats.total_revenue || 0),
+    active_subscriptions: Number(stats.active_subscriptions || 0),
+    monthly_revenue: (stats.monthly_revenue || []).map((row) => ({
+      label: row.label,
+      revenue: Number(row.revenue || 0),
+    })),
     org_stats: (orgs || []).map((org: any) => ({
       id: org.id,
       name: org.name,
       is_active: org.is_active,
       plan: org.subscription_plans?.name || org.subscription_plans?.[0]?.name || "—",
-      users: users.filter((user: any) => user.organization_id === org.id).length,
-      orders: orders.filter((order: any) => order.organization_id === org.id).length,
-      revenue: orders
-        .filter((order: any) => order.organization_id === org.id)
-        .reduce((sum: number, order: any) => sum + Number(order.final_amount || 0), 0),
+      users: Number(statsByOrg.get(org.id)?.users || 0),
+      orders: Number(statsByOrg.get(org.id)?.orders || 0),
+      revenue: Number(statsByOrg.get(org.id)?.revenue || 0),
     })),
   };
 }
@@ -886,7 +880,7 @@ async function post(path: string, payload?: any, _config?: ApiConfig): Promise<A
       email: await resolveLoginEmail(username || "", password || ""),
       password: password || "",
     });
-    if (error) toApiError(error);
+    if (error) throwApiError(loginErrorMessage(error), error.status === 429 ? 429 : 400);
     if (typeof window !== "undefined") localStorage.setItem("melio_token", data.session?.access_token || "");
     return asResponse({ access_token: data.session?.access_token, user: data.user });
   }

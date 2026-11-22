@@ -68,6 +68,7 @@ The migration is documented, in order:
 | [04-ke-hoach.md](docs/04-ke-hoach.md) | Remaining work, staged |
 | [05-van-de-phat-hien.md](docs/05-van-de-phat-hien.md) | **26 defects found in the original, with the keep-or-fix decision for each** |
 | [06-production-go-live-checklist.md](docs/06-production-go-live-checklist.md) | Production env, auth, DB, storage, deploy |
+| [07-test-plan.md](docs/07-test-plan.md) | Full web test plan: role matrix, test cases per module, race/security checks, exit criteria |
 
 Document 05 is the one worth reading. Rewriting a system is the only review that
 forces you to justify every decision the first version made, and writing the

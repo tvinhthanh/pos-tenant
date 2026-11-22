@@ -122,6 +122,25 @@ export function toApiError(error: any): never {
   throw wrapped;
 }
 
+// Supabase Auth trả lỗi tiếng Anh ("Invalid login credentials"). Đổi theo mã lỗi
+// sang tiếng Việt. Sai tên đăng nhập và sai mật khẩu dùng chung một câu để
+// không lộ tài khoản nào có thật.
+function loginErrorMessage(error: any): string {
+  const code = String(error?.code || "");
+  if (code === "invalid_credentials" || /invalid login credentials/i.test(error?.message || "")) {
+    return "Tên đăng nhập hoặc mật khẩu không đúng.";
+  }
+  if (code === "email_not_confirmed") return "Tài khoản chưa được xác nhận email.";
+  if (code === "user_banned") return "Tài khoản đã bị khóa. Liên hệ chủ quán để mở lại.";
+  if (code.startsWith("over_") || error?.status === 429) {
+    return "Đăng nhập sai quá nhiều lần. Vui lòng thử lại sau ít phút.";
+  }
+  if (!error?.status || error?.name === "AuthRetryableFetchError") {
+    return "Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại.";
+  }
+  return "Đăng nhập thất bại. Vui lòng thử lại.";
+}
+
 function throwApiError(message: string, status = 400): never {
   const error: any = new Error(message);
   error.response = { data: { detail: message }, status };
@@ -395,12 +414,12 @@ async function getSuperStats(orgId: number | null) {
     };
   }
 
-  const [branchesResult, usersResult, ordersResult, subscriptionsResult] = await Promise.all([
+  const [branchesResult, usersResult, ordersResult, subscriptionsResult, refundsResult] = await Promise.all([
     getSupabase().from("branches").select("id, organization_id").in("organization_id", orgIds.length ? orgIds : [-1]),
     getSupabase().from("profiles").select("id, organization_id, role").in("organization_id", orgIds.length ? orgIds : [-1]),
     getSupabase()
       .from("sales_orders")
-      .select("organization_id, final_amount, status, date")
+      .select("id, organization_id, final_amount, status, date")
       .in("organization_id", orgIds.length ? orgIds : [-1])
       .in("status", ["completed", "partially_refunded", "refunded"]),
     getSupabase()
@@ -409,18 +428,32 @@ async function getSuperStats(orgId: number | null) {
       .in("organization_id", orgIds.length ? orgIds : [-1])
       .eq("status", "active")
       .gt("expires_at", new Date().toISOString()),
+    getSupabase()
+      .from("refunds")
+      .select("order_id, amount")
+      .in("organization_id", orgIds.length ? orgIds : [-1]),
   ]);
 
   if (branchesResult.error) toApiError(branchesResult.error);
   if (usersResult.error) toApiError(usersResult.error);
   if (ordersResult.error) toApiError(ordersResult.error);
   if (subscriptionsResult.error) toApiError(subscriptionsResult.error);
+  if (refundsResult.error) toApiError(refundsResult.error);
 
   const branches = branchesResult.data || [];
   const users = (usersResult.data || []).filter((user: any) => user.role !== "superadmin");
-  const orders = ordersResult.data || [];
   const activeSubscriptions = subscriptionsResult.data || [];
-  const totalRevenue = orders.reduce((sum: number, order: any) => sum + Number(order.final_amount || 0), 0);
+  // Doanh thu thực của đơn = thành tiền − tiền đã hoàn. Đơn hoàn hết tính 0,
+  // hoàn một phần chỉ tính phần còn lại (cùng cách báo cáo của shop).
+  const refundedByOrder = new Map<number, number>();
+  (refundsResult.data || []).forEach((refund: any) => {
+    refundedByOrder.set(refund.order_id, (refundedByOrder.get(refund.order_id) || 0) + Number(refund.amount || 0));
+  });
+  const orders = (ordersResult.data || []).map((order: any) => ({
+    ...order,
+    net_amount: Math.max(0, Number(order.final_amount || 0) - (refundedByOrder.get(order.id) || 0)),
+  }));
+  const totalRevenue = orders.reduce((sum: number, order: any) => sum + order.net_amount, 0);
 
   const monthlyRevenueMap = new Map<string, number>();
   for (let i = 5; i >= 0; i -= 1) {
@@ -432,7 +465,7 @@ async function getSuperStats(orgId: number | null) {
     if (!order.date) return;
     const label = monthLabel(new Date(order.date));
     if (monthlyRevenueMap.has(label)) {
-      monthlyRevenueMap.set(label, (monthlyRevenueMap.get(label) || 0) + Number(order.final_amount || 0));
+      monthlyRevenueMap.set(label, (monthlyRevenueMap.get(label) || 0) + order.net_amount);
     }
   });
 
@@ -455,7 +488,7 @@ async function getSuperStats(orgId: number | null) {
       orders: orders.filter((order: any) => order.organization_id === org.id).length,
       revenue: orders
         .filter((order: any) => order.organization_id === org.id)
-        .reduce((sum: number, order: any) => sum + Number(order.final_amount || 0), 0),
+        .reduce((sum: number, order: any) => sum + order.net_amount, 0),
     })),
   };
 }
@@ -886,7 +919,7 @@ async function post(path: string, payload?: any, _config?: ApiConfig): Promise<A
       email: await resolveLoginEmail(username || "", password || ""),
       password: password || "",
     });
-    if (error) toApiError(error);
+    if (error) throwApiError(loginErrorMessage(error), error.status === 429 ? 429 : 400);
     if (typeof window !== "undefined") localStorage.setItem("melio_token", data.session?.access_token || "");
     return asResponse({ access_token: data.session?.access_token, user: data.user });
   }

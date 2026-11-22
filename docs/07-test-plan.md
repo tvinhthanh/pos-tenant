@@ -116,7 +116,7 @@ Cột **Ưu tiên**: P0/P1/P2. **[DB+]**: nên bổ sung pgTAP tương ứng.
 |---|---|---|---|---|
 | TC-AUTH-01 | Đăng nhập bằng username | Vào app, Header hiện đúng tên + shop | P0 | ✅ UI |
 | TC-AUTH-02 | Đăng nhập bằng email | Như trên | P1 | ⏳ |
-| TC-AUTH-03 | Sai mật khẩu / user không tồn tại / bị khóa | Thông báo tiếng Việt, không lộ "user có tồn tại hay không" | P0 | ❌ BUG-01 |
+| TC-AUTH-03 | Sai mật khẩu / user không tồn tại / bị khóa | Thông báo tiếng Việt, không lộ "user có tồn tại hay không" | P0 | ✅ UI (BUG-01 đã sửa) |
 | TC-AUTH-04 | Tài khoản không có profile | Bị chặn (migration `require_user_profile`) | P0 | ✅ DB |
 | TC-AUTH-05 | Đăng xuất rồi bấm Back | Không xem được trang cũ | P1 | ✅ UI |
 | TC-AUTH-06 | Token hết hạn khi đang dùng | Tự refresh hoặc về màn đăng nhập, không mất đơn đang soạn ở POS | P1 | ⏳ |
@@ -139,7 +139,7 @@ Cột **Ưu tiên**: P0/P1/P2. **[DB+]**: nên bổ sung pgTAP tương ứng.
 | TC-SAAS-06 | Thuê bao hết hạn / shop `is_active=false` | Nghiệp vụ bị chặn bởi `assert_service`, UI báo hết hạn | P0 | ⏳ |
 | TC-SAAS-07 | Superadmin: danh sách cửa hàng & chủ tiệm, khóa/mở shop | Hoạt động; khóa xong owner không thao tác được | P1 | ⏳ |
 | TC-SAAS-08 | Superadmin: purge tổ chức | Xóa sạch dữ liệu org (kể cả bảng append-only), org khác không ảnh hưởng | P1 | ✅ DB |
-| TC-SAAS-09 | Superadmin: thống kê hệ thống, audit logs | Số liệu khớp DB; lọc theo ngày/tổ chức | P2 | ❌ BUG-02 |
+| TC-SAAS-09 | Superadmin: thống kê hệ thống, audit logs | Số liệu khớp DB; lọc theo ngày/tổ chức | P2 | 🟡 UI (BUG-02 đã sửa; xem BUG-09) |
 
 ### 6.3 Nhân viên (`/users`, `StaffShopsMatrix`, Edge Function `manage-branch-user`)
 
@@ -544,8 +544,8 @@ Mỗi vòng ghi vào bảng: `ID | Env | Người test | Ngày | Pass/Fail/Block
 
 | | Tổng | ✅ | 🟡 | ❌ | ⏳ |
 |---|---:|---:|---:|---:|---:|
-| Tất cả | 171 | 64 | 12 | 2 | 93 |
-| P0 | 99 | 49 | 7 | 1 | 42 |
+| Tất cả | 171 | 65 | 13 | 0 | 93 |
+| P0 | 99 | 50 | 7 | 0 | 42 |
 
 **Ma trận quyền §5** (UI + API): owner F&B thấy đúng 15 màn, không có màn bán lẻ/cho thuê; owner gõ `/superadmin/*` bị đẩy về `/`. Staff F&B vào thẳng `/pos`, gõ `/reports`, `/expenses`, `/users`, `/superadmin/stores` đều bị đẩy về `/pos`, `/online` vào được. Superadmin chỉ thấy 3 màn SaaS, gõ `/reports` bị đẩy về. JWT staff có `app_metadata.role=staff`, `branch_ids=[1]` (hook đã bật). Token staff: UPDATE/DELETE `cashbook` → 403, tự đổi `profiles.role` → 403, `audit_logs` → rỗng. Chưa chạy: manager, staff bán lẻ / cho thuê, `owner2` khác tổ chức (đã có pgTAP tương ứng ở DB).
 
@@ -555,8 +555,8 @@ Mỗi vòng ghi vào bảng: `ID | Env | Người test | Ngày | Pass/Fail/Block
 
 | Mã | Mức | Ca | Mô tả | Vị trí |
 |---|---|---|---|---|
-| BUG-01 | Medium | TC-AUTH-03 | Sai mật khẩu / user không tồn tại hiện tiếng Anh "Invalid login credentials". Không lộ user có tồn tại (2 trường hợp cùng câu) nhưng không đạt yêu cầu thông báo tiếng Việt. | `web/src/components/AuthGuard.tsx` |
-| BUG-02 | Medium | TC-SAAS-09 | Thống kê hệ thống cộng `final_amount` của cả đơn `refunded` / `partially_refunded` vào "Doanh thu — Đã hoàn thành" và LTV. Tái hiện: bán 50.000đ rồi hủy → doanh thu tăng 50.000đ (1.150.050.000 thay vì 1.150.000.000). | `web/src/utils/api.ts:405` |
+| BUG-01 | Medium | TC-AUTH-03 | Sai mật khẩu / user không tồn tại hiện tiếng Anh "Invalid login credentials". Không lộ user có tồn tại (2 trường hợp cùng câu) nhưng không đạt yêu cầu thông báo tiếng Việt. | `web/src/utils/api.ts` (`loginErrorMessage`) — **Đã sửa**: đổi theo mã lỗi Supabase Auth sang tiếng Việt, sai tên và sai mật khẩu chung một câu "Tên đăng nhập hoặc mật khẩu không đúng." Kiểm lại trên UI: pass. |
+| BUG-02 | Medium | TC-SAAS-09 | Thống kê hệ thống cộng `final_amount` của cả đơn `refunded` / `partially_refunded` vào "Doanh thu — Đã hoàn thành" và LTV. Tái hiện: bán 50.000đ rồi hủy → doanh thu tăng 50.000đ (1.150.050.000 thay vì 1.150.000.000). | `web/src/utils/api.ts` (`getSuperStats`) — **Đã sửa**: doanh thu mỗi đơn = `final_amount − Σ refunds`. Kiểm lại trên UI: 1.150.000.000đ. |
 | BUG-03 | Low | TC-POS-02 | Lỗi thiếu kho hiện số lượng `numeric(18,4)` thô: "Cần 5.0000 cái, hiện có 3.0000 cái". | Thông báo lỗi kho từ RPC bán hàng (DB) |
 | BUG-04 | Low | TC-POS-02 | Sau khi giảm số lượng về mức đủ kho, thông báo lỗi cũ vẫn nằm trên giỏ hàng. | `web/src/app/(admin)/pos/page.tsx` |
 | BUG-05 | Low | TC-UI-02 | Màn "Chọn bàn" của staff: tiêu đề chữ trắng trên nền sáng, gần như không đọc được. | POS staff |
@@ -564,6 +564,7 @@ Mỗi vòng ghi vào bảng: `ID | Env | Người test | Ngày | Pass/Fail/Block
 | BUG-07 | Low | TC-RPT-09 | Dashboard ghi "Biên quỹ quỹ" (lặp chữ). | `web/src/app/(admin)/page.tsx:222` |
 | BUG-08 | Low | TC-MENU-01 | Món chưa có ảnh hiện ảnh mặc định là ly sữa lắc → dễ nhầm món. | POS thực đơn |
 | PERF-01 | Low | §8.6 | Mỗi trang gọi lặp `GET /auth/v1/user` và `profiles?id=eq…` hàng chục lần. | Auth/profile hooks |
+| BUG-09 | Medium | TC-SAAS-09 | Có sẵn từ trước: thống kê hệ thống tải từng dòng `sales_orders` / `refunds` rồi cộng ở trình duyệt, mà PostgREST giới hạn `max_rows = 1000` → hệ thống quá 1000 đơn sẽ đếm thiếu đơn và doanh thu. Cần RPC tổng hợp ở DB. | `web/src/utils/api.ts` (`getSuperStats`) |
 
 ### 14.4 Khoảng trống / cần chốt nghiệp vụ
 
@@ -575,6 +576,6 @@ Mỗi vòng ghi vào bảng: `ID | Env | Người test | Ngày | Pass/Fail/Block
 
 ### 14.5 Việc tiếp theo
 
-1. Sửa BUG-01, BUG-02 rồi chạy lại TC-AUTH-03, TC-SAAS-09.
+1. ~~Sửa BUG-01, BUG-02~~ — đã sửa và kiểm lại (TC-AUTH-03 pass, TC-SAAS-09 doanh thu đúng). Còn BUG-09 (giới hạn 1000 dòng).
 2. Vòng 2: các ca ⏳ P0 còn lại — PIN (TC-PIN-02/03), voucher/điểm (TC-POS-05..09), offline (TC-OFF-01/02/04), nhập kho / NCC qua UI (TC-INV-01..03), race §8.2, vai trò manager + staff bán lẻ/cho thuê ở §5.
 3. Viết Playwright cho các luồng đã chạy tay ở vòng này (đăng nhập + PIN, mở ca → bán → hủy → đóng ca, ma trận quyền).

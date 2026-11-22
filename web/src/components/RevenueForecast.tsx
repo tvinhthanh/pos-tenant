@@ -10,6 +10,16 @@ import {
 import { getRevenueForecast } from "@/utils/fnb";
 
 const money = (v: number) => Math.round(Number(v) || 0).toLocaleString("vi-VN");
+/** Nhãn trục Y gọn: 80.000.000 → "80tr", 1.200.000.000 → "1,2 tỷ", 500.000 → "500k". */
+const axisMoney = (v: number) => {
+  const n = Number(v) || 0;
+  const abs = Math.abs(n);
+  const fmt = (x: number) => x.toLocaleString("vi-VN", { maximumFractionDigits: 1 });
+  if (abs >= 1e9) return `${fmt(n / 1e9)} tỷ`;
+  if (abs >= 1e6) return `${fmt(n / 1e6)}tr`;
+  if (abs >= 1e3) return `${fmt(n / 1e3)}k`;
+  return fmt(n);
+};
 const WEEKDAYS = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
 
 /** "2026-11-09" → "T2 09/11" — không qua Date(UTC) để không lệch ngày. */
@@ -115,7 +125,7 @@ export default function RevenueForecast() {
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                 <XAxis dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} />
-                <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `${v / 1000}k`} />
+                <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} tickFormatter={axisMoney} width={56} />
                 <Tooltip
                   contentStyle={{ backgroundColor: "#0f172a", borderColor: "#334155", color: "#f8fafc", borderRadius: "12px", fontSize: "12px" }}
                   formatter={(val: number, key: string) => [`${money(val)}đ`, key === "DuBao" ? "Dự báo" : "Thực tế"]}

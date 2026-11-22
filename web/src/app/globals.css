@@ -97,6 +97,15 @@ body {
   background: rgb(var(--slate-500));
 }
 
+/* Ẩn thanh cuộn nhưng vẫn cuộn được (hàng tab cuộn ngang trên màn hẹp) */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* Glassmorphism Panel (Sidebar, Header, Modals) */
 .glass-panel {
   background: var(--glass-panel-bg);

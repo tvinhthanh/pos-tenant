@@ -130,6 +130,7 @@ export default function SalesBreakdown({
   }, [data]);
 
   const totals = data?.totals || { orders: 0, quantity: 0, revenue: 0, cost: 0, comp_quantity: 0, comp_value: 0 };
+  const noItems = !!data && totals.quantity === 0;
   const comps = data?.comps || [];
   // Gộp theo người tặng để chủ quán đối chiếu nhanh
   const compsByStaff = useMemo(() => {
@@ -172,9 +173,12 @@ export default function SalesBreakdown({
               key={key}
               role="tab"
               aria-selected={tab === key}
+              // Chưa bán món nào thì tab nào cũng trống — khóa lại để không tưởng là bấm hỏng.
+              disabled={noItems}
+              title={noItems ? "Chưa có món nào được bán trong kỳ này" : undefined}
               onClick={() => setTab(key)}
-              className={`flex flex-1 xl:flex-none items-center justify-center gap-1.5 whitespace-nowrap px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                tab === key ? "bg-indigo-600 text-white" : "text-slate-400 hover:text-slate-200"
+              className={`flex flex-1 xl:flex-none items-center justify-center gap-1.5 whitespace-nowrap px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                tab === key && !noItems ? "bg-indigo-600 text-white" : "text-slate-400 enabled:hover:text-slate-200"
               }`}
             >
               <Icon className="hidden sm:block w-3.5 h-3.5 shrink-0" />

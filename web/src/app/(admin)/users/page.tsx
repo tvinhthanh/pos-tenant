@@ -10,6 +10,8 @@ import {
   Check, AlertCircle, X, ToggleLeft, ToggleRight,
   DollarSign, Briefcase, Clock, CreditCard, Calendar
 } from "lucide-react";
+import { DateRangePicker } from "@/components/DatePicker";
+import { quickRanges, startOfMonth, toYmd } from "@/utils/date";
 import { toast } from "@/components/Toaster";
 import StaffShopsMatrix from "@/components/StaffShopsMatrix";
 
@@ -25,10 +27,6 @@ async function setUserPin(userId: string, pin: string | null) {
   const { error } = await supabase.rpc("set_user_pin", { p_user_id: userId, p_pin: pin });
   if (error) throw new Error(error.message);
 }
-
-// toISOString() quy về UTC nên ở +07 mốc nửa đêm bị lùi 1 ngày.
-const toDateInput = (date: Date) =>
-  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 
 const ROLE_OPTIONS = [
   { value: "staff", label: "Nhân viên (Staff — bán hàng, tạo phiếu chờ duyệt)" },
@@ -79,10 +77,8 @@ export default function UserManagement() {
   const [editClearPin, setEditClearPin] = useState(false);
 
   // Kỳ tính lương — mặc định tháng hiện tại
-  const [payFrom, setPayFrom] = useState(
-    toDateInput(new Date(new Date().getFullYear(), new Date().getMonth(), 1))
-  );
-  const [payTo, setPayTo] = useState(toDateInput(new Date()));
+  const [payFrom, setPayFrom] = useState(() => toYmd(startOfMonth(new Date())));
+  const [payTo, setPayTo] = useState(() => toYmd(new Date()));
 
   // Errors state
   const [errorMessage, setErrorMessage] = useState("");
@@ -466,21 +462,15 @@ export default function UserManagement() {
               <Calendar className="w-4 h-4 text-slate-500" />
               <span className="font-semibold">Kỳ tính lương</span>
             </div>
-            <div className="flex items-center space-x-2 text-xs">
-              <input
-                type="date"
-                value={payFrom}
-                onChange={(e) => setPayFrom(e.target.value)}
-                className="bg-slate-950 border border-slate-850 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-indigo-500 [color-scheme:dark]"
-              />
-              <span className="text-slate-600">→</span>
-              <input
-                type="date"
-                value={payTo}
-                onChange={(e) => setPayTo(e.target.value)}
-                className="bg-slate-950 border border-slate-850 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-indigo-500 [color-scheme:dark]"
-              />
-            </div>
+            <DateRangePicker
+              className="w-full md:w-72"
+              align="right"
+              aria-label="Kỳ tính lương"
+              from={payFrom}
+              to={payTo}
+              presets={quickRanges()}
+              onChange={(f, t) => { setPayFrom(f); setPayTo(t); }}
+            />
           </div>
 
           <div className="glass-panel border border-slate-900 rounded-2xl overflow-hidden shadow-xl">

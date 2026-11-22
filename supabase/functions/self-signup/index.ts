@@ -9,23 +9,19 @@
 //   * Giới hạn gửi email / đăng ký của Supabase Auth ([auth.rate_limit]).
 //
 // Env:
-//   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY  (Supabase tự cấp)
+//   SUPABASE_URL + key (xem _shared/keys.ts: SB_PUBLISHABLE_KEY / SB_SECRET_KEY, hoặc key cũ tự cấp)
 //   TURNSTILE_SECRET_KEY            — bỏ trống = không kiểm captcha (chỉ dùng local)
 //   SIGNUP_REQUIRE_EMAIL_CONFIRM    — 'false' = kích hoạt ngay (local); mặc định bắt xác thực email
 //   SIGNUP_REDIRECT_URL             — trang mở sau khi bấm link xác thực email
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.111.0'
+import { publishableKey as anonKey, requireKeys, secretKey as serviceRoleKey, supabaseUrl } from '../_shared/keys.ts'
 
-const supabaseUrl = Deno.env.get('SUPABASE_URL')
-const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-const anonKey = Deno.env.get('SUPABASE_ANON_KEY')
 const turnstileSecret = Deno.env.get('TURNSTILE_SECRET_KEY') ?? ''
 const requireEmailConfirm = (Deno.env.get('SIGNUP_REQUIRE_EMAIL_CONFIRM') ?? 'true') !== 'false'
 const redirectTo = Deno.env.get('SIGNUP_REDIRECT_URL') ?? undefined
 
-if (!supabaseUrl || !serviceRoleKey || !anonKey) {
-  throw new Error('Missing SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY')
-}
+requireKeys({ publishable: true, secret: true })
 
 const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } })
 const publicClient = createClient(supabaseUrl, anonKey, { auth: { persistSession: false } })

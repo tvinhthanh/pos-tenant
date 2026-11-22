@@ -10,6 +10,8 @@ import {
 } from "@/utils/rental";
 import { errorText } from "@/components/Toaster";
 import OverdueAlert from "../_components/OverdueAlert";
+import { DatePicker } from "@/components/DatePicker";
+import { fromYmd, toYmd } from "@/utils/date";
 
 type View = "day" | "week";
 
@@ -162,12 +164,11 @@ export default function RentalCalendarPage() {
           <button onClick={() => setAnchor(new Date())} className="px-2 text-xs font-medium text-slate-300 hover:text-slate-100">Hôm nay</button>
           <button onClick={() => step(1)} aria-label="Sau" className="p-2 text-slate-400 hover:text-slate-100"><ChevronRight className="h-4 w-4" /></button>
         </div>
-        <input
-          type="date"
+        <DatePicker
+          className="w-40"
           aria-label="Chọn ngày"
-          value={`${anchor.getFullYear()}-${String(anchor.getMonth() + 1).padStart(2, "0")}-${String(anchor.getDate()).padStart(2, "0")}`}
-          onChange={(e) => e.target.value && setAnchor(new Date(`${e.target.value}T00:00`))}
-          className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-1.5 text-sm text-slate-100"
+          value={toYmd(anchor)}
+          onChange={(v) => v && setAnchor(fromYmd(v))}
         />
         <span className="text-sm font-semibold text-slate-200">{rangeLabel}</span>
         <select

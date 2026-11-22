@@ -62,6 +62,6 @@ if ($secrets.Count -gt 0) {
 }
 
 # ---- Deploy -------------------------------------------------------------------
-# verify_jwt lấy theo supabase/config.toml (send-sms = false, verify-domain = true)
+# verify_jwt lấy theo supabase/config.toml (mọi hàm = false, tự xác thực — key mới không phải JWT)
 supabase functions deploy @Functions --project-ref $ref
 exit $LASTEXITCODE

@@ -8,35 +8,25 @@ import SalesBreakdown from "@/components/SalesBreakdown";
 import RevenueForecast from "@/components/RevenueForecast";
 import { toast } from "@/components/Toaster";
 import { exportReportExcel } from "@/utils/fnb";
-import { Calendar, ArrowRight, ShieldCheck, FileSpreadsheet } from "lucide-react";
+import { ShieldCheck, FileSpreadsheet } from "lucide-react";
+import { DateRangePicker } from "@/components/DatePicker";
+import { quickRanges, startOfMonth, toYmd } from "@/utils/date";
 
+/** Một năm trong chi tiết thuế hộ kinh doanh (get_financial_report.tax.years). */
+type TaxYear = {
+  year: number;
+  household_revenue: number;
+  exempt_threshold: number;
+  exceeded: boolean;
+  vat_rate: number;
+  pit_rate: number;
+  pit_reduction_pct: number;
+};
 
-// toISOString() đổi sang UTC nên ở múi giờ +07 sẽ lùi 1 ngày với mốc nửa đêm.
-// Ngày mặc định của bộ lọc phải là ngày địa phương.
-const toDateInput = (date: Date) =>
-  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-
-/** Các khoảng ngày chọn nhanh (theo giờ máy, tức giờ VN tại quán). */
-function quickRanges() {
-  const today = new Date();
-  const shift = (days: number) => { const d = new Date(today); d.setDate(d.getDate() + days); return d; };
-  const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-  const firstOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-  const lastOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
-  return [
-    { label: "Hôm nay", from: toDateInput(today), to: toDateInput(today) },
-    { label: "Hôm qua", from: toDateInput(shift(-1)), to: toDateInput(shift(-1)) },
-    { label: "7 ngày", from: toDateInput(shift(-6)), to: toDateInput(today) },
-    { label: "Tháng này", from: toDateInput(firstOfMonth), to: toDateInput(today) },
-    { label: "Tháng trước", from: toDateInput(firstOfLastMonth), to: toDateInput(lastOfLastMonth) },
-  ];
-}
 
 export default function Reports() {
-  const [startDate, setStartDate] = useState(
-    toDateInput(new Date(new Date().getFullYear(), new Date().getMonth(), 1))
-  );
-  const [endDate, setEndDate] = useState(toDateInput(new Date()));
+  const [startDate, setStartDate] = useState(() => toYmd(startOfMonth(new Date())));
+  const [endDate, setEndDate] = useState(() => toYmd(new Date()));
   const [exporting, setExporting] = useState(false);
 
   const handleExport = async () => {
@@ -99,24 +89,20 @@ export default function Reports() {
                   );
                 })}
               </div>
-              <div className="flex items-center space-x-2 bg-slate-900 border border-slate-800 p-2 rounded-xl text-xs">
-                <Calendar className="w-4 h-4 text-slate-500" />
-                <input 
-                  type="date" 
-                  value={startDate} 
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="bg-transparent text-slate-300 focus:outline-none" 
-                />
-                <ArrowRight className="w-3.5 h-3.5 text-slate-650" />
-                <input 
-                  type="date" 
-                  value={endDate} 
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="bg-transparent text-slate-300 focus:outline-none" 
-                />
+              <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 p-1.5 rounded-xl text-xs">
+                <div className="min-w-0 flex-1">
+                  <DateRangePicker
+                    variant="inline"
+                    align="right"
+                    from={startDate}
+                    to={endDate}
+                    presets={quickRanges()}
+                    onChange={(f, t) => { setStartDate(f); setEndDate(t); }}
+                  />
+                </div>
                 <button
                   onClick={() => refetchReport()}
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg font-semibold transition-all shrink-0 ml-2"
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-lg font-semibold transition-all shrink-0"
                 >
                   Lọc
                 </button>
@@ -127,7 +113,8 @@ export default function Reports() {
                   title="Xuất Excel 5 sheet: tổng quan, bán hàng, kết ca, chi phí, tồn kho"
                 >
                   <FileSpreadsheet className="w-3.5 h-3.5" />
-                  {exporting ? "Đang xuất..." : "Xuất Excel"}
+                  <span className="hidden sm:inline">{exporting ? "Đang xuất..." : "Xuất Excel"}</span>
+                  <span className="sm:hidden">{exporting ? "…" : "Excel"}</span>
                 </button>
               </div>
               </div>
@@ -162,16 +149,36 @@ export default function Reports() {
                     <span className="text-sm font-bold text-emerald-400 block mt-1.5">{report.net_profit.toLocaleString("vi-VN")}đ</span>
                   </div>
                   <div className="p-4 bg-slate-900/40 border border-slate-850 rounded-xl">
-                    <span className="text-[10px] text-slate-500 font-semibold block uppercase">6. Thuế khoán HKD</span>
+                    <span className="text-[10px] text-slate-500 font-semibold block uppercase">6. Thuế HKD</span>
                     <span className="text-sm font-bold text-amber-500 block mt-1.5">{report.estimated_tax.toLocaleString("vi-VN")}đ</span>
+                    {report.tax && (
+                      <span className="text-[10px] text-slate-500 block mt-1 leading-snug tabular-nums">
+                        <span className="block whitespace-nowrap">GTGT {Number(report.tax.vat).toLocaleString("vi-VN")}đ</span>
+                        <span className="block whitespace-nowrap">TNCN {Number(report.tax.pit).toLocaleString("vi-VN")}đ</span>
+                      </span>
+                    )}
                   </div>
                 </div>
 
                 <div className="p-4 bg-indigo-500/5 border border-indigo-500/15 rounded-xl text-xs text-slate-400 flex items-start space-x-2.5">
                   <ShieldCheck className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
-                  <span>
-                    <strong>Hỗ trợ chuẩn bị Thuế:</strong> Chỉ tiêu số 6 (Thuế khoán HKD) được ước tính bằng <strong>1.5% doanh thu</strong> đối với mô hình kinh doanh ăn uống & thương mại bán lẻ tại Việt Nam (gồm 1% Thuế GTGT và 0.5% Thuế TNCN). Số liệu này giúp bạn kê khai tờ khai thuế hộ kinh doanh cực kỳ dễ dàng.
-                  </span>
+                  <div className="space-y-1">
+                    <p>
+                      <strong>Hỗ trợ chuẩn bị Thuế:</strong> chỉ tiêu số 6 ước tính theo quy định từ 01/01/2026 (đã bỏ thuế khoán).
+                      Doanh thu năm của cả hộ (mọi shop) từ 1 tỷ đồng trở xuống không chịu thuế. Vượt ngưỡng: GTGT tính trên toàn bộ
+                      doanh thu, TNCN tính trên phần vượt 1 tỷ; năm 2026–2027 được giảm 30% TNCN. Tỷ lệ theo ngành: ăn uống 3% + 1,5%,
+                      bán lẻ 1% + 0,5%, cho thuê tài sản 5% + 5%.
+                    </p>
+                    {((report.tax?.years ?? []) as TaxYear[]).map((y) => (
+                      <p key={y.year}>
+                        Năm {y.year}: doanh thu cả hộ {y.household_revenue.toLocaleString("vi-VN")}đ
+                        {y.exceeded
+                          ? ` — vượt ngưỡng ${y.exempt_threshold.toLocaleString("vi-VN")}đ, áp GTGT ${+(y.vat_rate * 100).toFixed(2)}% + TNCN ${+(y.pit_rate * 100).toFixed(2)}%${y.pit_reduction_pct > 0 ? `, giảm ${y.pit_reduction_pct}% TNCN` : ""}.`
+                          : ` — chưa vượt ngưỡng ${y.exempt_threshold.toLocaleString("vi-VN")}đ, chưa phải nộp.`}
+                      </p>
+                    ))}
+                    <p className="text-slate-500">Số ước tính để chuẩn bị kê khai — kế toán chốt số nộp thật.</p>
+                  </div>
                 </div>
               </div>
             )}

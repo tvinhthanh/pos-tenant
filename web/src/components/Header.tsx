@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
-import { Menu, Search, ShieldCheck } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { CornerDownLeft, Menu, Search, ShieldCheck } from "lucide-react";
 import api from "@/utils/api";
-import type { MyShop } from "@/utils/shop";
+import type { BusinessType, MyShop } from "@/utils/shop";
 import { SHOP_ROLE_LABELS, type ShopRole } from "@/utils/shop";
+import { foldVietnamese, getNavGroups, pageTitle } from "@/utils/nav";
 import ThemeToggle from "./ThemeToggle";
 import ShopSwitcher from "./ShopSwitcher";
 import OnlineBell from "./OnlineBell";
@@ -14,15 +15,18 @@ interface HeaderProps {
   onMenuToggle: () => void;
 }
 
+type HeaderUser = {
+  full_name: string | null;
+  role: string;
+  branch_id?: number;
+  business_type?: BusinessType | null;
+  shops?: MyShop[];
+  is_org_owner?: boolean;
+};
+
 export default function Header({ onMenuToggle }: HeaderProps) {
   const pathname = usePathname();
-  const [user, setUser] = useState<{
-    full_name: string | null;
-    role: string;
-    branch_id?: number;
-    shops?: MyShop[];
-    is_org_owner?: boolean;
-  } | null>(null);
+  const [user, setUser] = useState<HeaderUser | null>(null);
 
   useEffect(() => {
     api.get("/api/v1/auth/me")
@@ -30,134 +34,177 @@ export default function Header({ onMenuToggle }: HeaderProps) {
       .catch(() => setUser(null));
   }, []);
 
-  // Map path to friendly page name
-  const getPageTitle = () => {
-    switch (pathname) {
-      case "/":
-        return "Tổng quan";
-      case "/pos":
-        return "POS Bán hàng";
-      case "/inventory":
-        return "Kho & Định lượng";
-      case "/inventory/adjustments":
-        return "Điều chỉnh kho";
-      case "/expenses":
-        return "Chi phí & Sổ quỹ";
-      case "/suppliers":
-        return "Công nợ & NCC";
-      case "/reports":
-        return "Báo cáo & Thuế";
-      case "/menu":
-        return "Thực đơn & Tùy chọn";
-      case "/settings":
-        return "Thông tin quán";
-      case "/users":
-        return "Nhân viên";
-      case "/tables":
-        return "Khu vực & Bàn";
-      case "/shifts":
-        return "Lịch sử ca";
-      case "/rental":
-        return "Bảng cho thuê";
-      case "/rental/new":
-        return "Thuê mới";
-      case "/rental/contracts":
-        return "Hợp đồng thuê";
-      case "/rental/catalog":
-        return "Danh mục cho thuê";
-      case "/rental/calendar":
-        return "Lịch cho thuê";
-      case "/rental/report":
-        return "Báo cáo cho thuê";
-      case "/retail":
-        return "Bán hàng";
-      case "/retail/returns":
-        return "Trả hàng";
-      case "/retail/products":
-        return "Sản phẩm";
-      case "/retail/receive":
-        return "Nhập hàng";
-      case "/retail/stocktake":
-        return "Kiểm kê";
-      case "/retail/report":
-        return "Báo cáo bán lẻ";
-      case "/website":
-        return "Website";
-      case "/online":
-        return "Đơn online";
-      case "/marketing":
-        return "Marketing & Loyalty";
-      case "/superadmin/stores":
-        return "Cửa hàng & Chủ tiệm";
-      case "/superadmin/stats":
-        return "Thống kê hệ thống";
-      case "/superadmin/audit-logs":
-        return "Audit logs";
-      default:
-        return "Hệ thống";
-    }
-  };
-
   // profiles.full_name cho phép null → không gọi thẳng .charAt(0)
   const displayName = user?.full_name?.trim() || "Người dùng";
+  const roleLabel = user ? SHOP_ROLE_LABELS[user.role as ShopRole] ?? user.role : "";
+  const isPrivileged = user?.role === "owner" || user?.role === "superadmin";
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 w-full items-center justify-between border-b border-slate-900 bg-slate-950/80 px-4 md:px-6 backdrop-blur-md">
-      {/* Left side: Hamburger menu + Breadcrumbs */}
-      <div className="flex items-center space-x-4">
+    <header className="sticky top-0 z-30 flex h-16 w-full items-center gap-3 border-b border-slate-850 bg-slate-950/80 px-4 backdrop-blur-md md:px-6">
+      {/* Trái: menu (mobile) + shop + tên trang */}
+      <div className="flex min-w-0 flex-1 items-center gap-3">
         <button
           onClick={onMenuToggle}
-          className="rounded-lg p-2 text-slate-400 hover:bg-slate-850 hover:text-slate-100 lg:hidden focus:outline-none"
+          aria-label="Mở menu"
+          className="shrink-0 rounded-lg p-2 text-slate-400 hover:bg-slate-850 hover:text-slate-100 focus:outline-none lg:hidden"
         >
-          <Menu className="w-5 h-5" />
+          <Menu className="h-5 w-5" />
         </button>
 
-        {/* Shop đang dùng (multi-shop) */}
         {user?.shops && user.shops.length > 0 && user.branch_id && (
           <ShopSwitcher shops={user.shops} activeBranchId={user.branch_id} canCreate={Boolean(user.is_org_owner)} />
         )}
 
-        {/* Breadcrumb / Title */}
-        <div className="hidden sm:flex items-center space-x-2 text-sm font-medium">
-          <span className="text-slate-200 font-semibold">{getPageTitle()}</span>
-        </div>
+        <span className="hidden truncate text-sm font-semibold text-slate-200 sm:block">{pageTitle(pathname)}</span>
       </div>
 
-      {/* Right side: Search + Notification + User */}
-      <div className="flex items-center space-x-4">
-        {/* Search Input (desktop) */}
-        <div className="relative hidden md:block w-64">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
-          <input
-            type="text"
-            placeholder="Tìm nhanh..."
-            className="w-full rounded-xl bg-slate-900 border border-slate-850 py-1.5 pl-9 pr-4 text-xs text-white placeholder-slate-500 focus:border-indigo-500 focus:outline-none transition-all"
-          />
-        </div>
+      {/* Phải: tìm nhanh + giao diện + đơn online + người dùng */}
+      <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+        {user && <QuickNav role={user.role} businessType={user.business_type} />}
 
-        {/* Theme Toggle Button */}
         <ThemeToggle />
 
         {/* Đơn online đang chờ (shop, không phải admin nền tảng) */}
         {user && user.role !== "superadmin" && <OnlineBell />}
 
-        {/* User Profile */}
         {user && (
-          <div className="flex items-center space-x-3 pl-2 border-l border-slate-900">
-            <div className="hidden text-right lg:block">
-              <span className="block text-xs font-semibold text-slate-200">{displayName}</span>
-              <span className="block text-[10px] text-slate-500">{SHOP_ROLE_LABELS[user.role as ShopRole] ?? user.role}</span>
+          <div className="ml-1 flex items-center gap-2.5 border-l border-slate-850 pl-3" title={`${displayName} · ${roleLabel}`}>
+            <div className="hidden min-w-0 text-right lg:block">
+              <span className="block max-w-[10rem] truncate text-xs font-semibold text-slate-200">{displayName}</span>
+              <span className="block text-[10px] text-slate-500">{roleLabel}</span>
             </div>
-            
-            <div className="relative flex h-8.5 w-8.5 items-center justify-center rounded-xl bg-indigo-600/10 text-indigo-400 border border-indigo-500/20 font-bold text-sm uppercase shrink-0">
-              {user.role === "owner" || user.role === "superadmin" ? (
-                <ShieldCheck className="absolute -bottom-1 -right-1 h-3.5 w-3.5 text-emerald-400 fill-slate-950" />
-              ) : null}
+            <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-indigo-500/20 bg-indigo-600/10 text-sm font-bold uppercase text-indigo-400">
               {displayName.charAt(0)}
+              {isPrivileged && (
+                <ShieldCheck className="absolute -bottom-1 -right-1 h-3.5 w-3.5 fill-slate-950 text-emerald-400" aria-label="Quản trị" />
+              )}
             </div>
           </div>
         )}
       </div>
     </header>
+  );
+}
+
+/**
+ * Ô "Tìm nhanh": gõ tên màn hình (có dấu hay không đều được) → Enter để mở.
+ * Chỉ liệt kê màn người dùng được vào (cùng nguồn menu với Sidebar). Ctrl/⌘ + K để focus.
+ */
+function QuickNav({ role, businessType }: { role: string; businessType?: BusinessType | null }) {
+  const router = useRouter();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+
+  const items = useMemo(
+    () => getNavGroups(role, businessType).flatMap((g) => g.items.map((i) => ({ ...i, group: g.title }))),
+    [role, businessType],
+  );
+  const results = useMemo(() => {
+    const q = foldVietnamese(query);
+    if (!q) return items;
+    return items.filter((i) => foldVietnamese(`${i.name} ${i.group}`).includes(q));
+  }, [items, query]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        inputRef.current?.focus();
+        setOpen(true);
+      }
+    };
+    const onClick = (e: MouseEvent) => {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onClick);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onClick);
+    };
+  }, []);
+
+  const go = (path: string) => {
+    setOpen(false);
+    setQuery("");
+    inputRef.current?.blur();
+    router.push(path);
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setOpen(true);
+      setActive((i) => Math.min(i + 1, results.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActive((i) => Math.max(i - 1, 0));
+    } else if (e.key === "Enter" && results[active]) {
+      e.preventDefault();
+      go(results[active].path);
+    } else if (e.key === "Escape") {
+      setOpen(false);
+      inputRef.current?.blur();
+    }
+  };
+
+  return (
+    <div ref={boxRef} className="relative hidden md:block md:w-56 xl:w-72">
+      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+      <input
+        ref={inputRef}
+        type="text"
+        role="combobox"
+        aria-expanded={open}
+        aria-controls="quicknav-list"
+        aria-label="Tìm nhanh màn hình"
+        value={query}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setActive(0);
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={onKeyDown}
+        placeholder="Tìm màn hình…"
+        className="w-full rounded-xl border border-slate-850 bg-slate-900 py-2 pl-9 pr-14 text-xs text-slate-100 placeholder-slate-500 transition-colors focus:border-indigo-500 focus:outline-none"
+      />
+      <kbd className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md border border-slate-800 px-1.5 py-0.5 font-sans text-[10px] text-slate-500">
+        Ctrl K
+      </kbd>
+
+      {open && (
+        <ul
+          id="quicknav-list"
+          role="listbox"
+          className="absolute right-0 z-40 mt-2 max-h-80 w-full min-w-[16rem] overflow-y-auto rounded-xl border border-slate-800 bg-slate-950 py-1 shadow-2xl"
+        >
+          {results.length === 0 && <li className="px-3 py-3 text-xs text-slate-500">Không có màn hình nào khớp “{query}”.</li>}
+          {results.map((item, i) => {
+            const Icon = item.icon;
+            return (
+              <li key={item.path} role="option" aria-selected={i === active}>
+                <button
+                  type="button"
+                  onMouseEnter={() => setActive(i)}
+                  onClick={() => go(item.path)}
+                  className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs ${
+                    i === active ? "bg-indigo-600/10 text-slate-100" : "text-slate-300"
+                  }`}
+                >
+                  <Icon className="h-4 w-4 shrink-0 text-slate-500" />
+                  <span className="min-w-0 flex-1 truncate font-semibold">{item.name}</span>
+                  <span className="shrink-0 text-[10px] text-slate-500">{item.group}</span>
+                  {i === active && <CornerDownLeft className="h-3 w-3 shrink-0 text-slate-500" />}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }

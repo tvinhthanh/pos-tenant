@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import api from "@/utils/api";
 import { getSalesSummary } from "@/utils/rpc";
+import { toYmd } from "@/utils/date";
 import { 
   TrendingUp, TrendingDown, DollarSign, Package, 
   AlertTriangle, CheckCircle2, ChevronRight, Award
@@ -16,16 +17,14 @@ import {
 
 const money = (value: unknown) => Number(value || 0).toLocaleString("vi-VN");
 
-const toDateInput = (date: Date) =>
-  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 
 export default function Dashboard() {
   const [user, setUser] = useState<{ role: string } | null>(null);
   const [checkingRole, setCheckingRole] = useState(true);
 
   const now = new Date();
-  const monthStart = toDateInput(new Date(now.getFullYear(), now.getMonth(), 1));
-  const monthEnd = toDateInput(now);
+  const monthStart = toYmd(new Date(now.getFullYear(), now.getMonth(), 1));
+  const monthEnd = toYmd(now);
 
   useEffect(() => {
     api.get("/api/v1/auth/me")
@@ -75,12 +74,12 @@ export default function Dashboard() {
   // TOÀN BỘ đơn trong kỳ. Trước đây tính trên 50 đơn gần nhất nên sai khi quán
   // bán nhiều hơn 50 đơn/tuần.
   const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
-  const weekStartKey = toDateInput(weekStart);
+  const weekStartKey = toYmd(weekStart);
   const { data: sales } = useQuery({
     queryKey: ["dashboardSales", weekStartKey],
     queryFn: () => getSalesSummary(
       new Date(`${weekStartKey}T00:00:00`).toISOString(),
-      new Date(`${toDateInput(now)}T23:59:59.999`).toISOString(),
+      new Date(`${toYmd(now)}T23:59:59.999`).toISOString(),
     ),
     enabled: isEnabled
   });

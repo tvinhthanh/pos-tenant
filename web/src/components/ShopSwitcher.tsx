@@ -41,13 +41,13 @@ export default function ShopSwitcher({ shops, activeBranchId, canCreate }: ShopS
   const interactive = shops.length > 1 || canCreate;
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative min-w-0" ref={ref}>
       <button
         type="button"
         onClick={() => interactive && setOpen((v) => !v)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className={`flex max-w-[14rem] items-center gap-2 rounded-xl border border-slate-850 px-3 py-1.5 text-left text-xs text-slate-200 ${
+        className={`flex max-w-full sm:max-w-[14rem] items-center gap-2 rounded-xl border border-slate-850 px-3 py-1.5 text-left text-xs text-slate-200 ${
           interactive ? "hover:bg-slate-900" : "cursor-default"
         }`}
       >

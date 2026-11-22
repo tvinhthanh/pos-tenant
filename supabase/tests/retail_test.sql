@@ -6,7 +6,7 @@ begin;
 
 set search_path = public, extensions, app;
 
-select extensions.plan(47);
+select extensions.plan(48);
 
 -- ---------------------------------------------------------------------------
 -- Dữ liệu: tổ chức, owner toàn tổ chức, thu ngân của shop bán lẻ
@@ -164,6 +164,8 @@ select is((select status::text from public.sales_orders where id = (select o1 fr
 select is((select sum(amount) from public.cashbook where category = 'Trả hàng' and branch_id = (select b from t)
            and shift_id = (select id from public.shifts where branch_id = (select b from t) and status = 'open')), 21000::numeric,
           'Tiền hoàn ra từ két của ca hiện tại');
+select is((select total_sales from public.shifts where branch_id = (select b from t) and status = 'open'), 27000::bigint,
+          'Doanh thu ca giảm theo tiền hoàn trả hàng (48.000 − 21.000)');
 
 select throws_ok(format($$select public.return_goods(%s, %L::jsonb)$$, (select b from t), jsonb_build_object(
   'order_id', (select o1 from t), 'reason', 'Thử trả quá',

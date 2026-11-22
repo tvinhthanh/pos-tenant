@@ -381,24 +381,27 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
+# verify_jwt = false cho mọi hàm: key mới (sb_publishable_… / sb_secret_…) KHÔNG phải
+# JWT nên gateway sẽ chặn nếu bật. Mỗi hàm tự xác thực người gọi (auth.getUser) hoặc tự
+# kiểm chữ ký / captcha như ghi dưới đây. Key cho hàm: xem functions/_shared/keys.ts.
+
 # Tạo tài khoản nhân viên / đổi mật khẩu — cần Admin API nên phải chạy ở Edge
-# Function, không đưa service_role key vào web container.
-# verify_jwt = true: gateway chặn request không có access token hợp lệ; hàm vẫn
-# tự kiểm quyền (platform_admins / owner toàn tổ chức / manager của shop) trong DB.
+# Function, không đưa secret key vào web. Hàm tự getUser(token) rồi kiểm quyền
+# (platform_admins / owner toàn tổ chức / manager của shop) trong DB.
 [functions.manage-branch-user]
 enabled = true
-verify_jwt = true
+verify_jwt = false
 
-# Chủ shop tự đăng ký. Người gọi chưa có tài khoản nên chỉ có anon key (anon key
-# là JWT hợp lệ nên verify_jwt = true vẫn cho qua). Chống bot bằng Turnstile.
+# Chủ shop tự đăng ký: người gọi chưa có tài khoản. Chống bot bằng Turnstile
+# (TURNSTILE_SECRET_KEY) + rate limit của Supabase Auth.
 [functions.self-signup]
 enabled = true
-verify_jwt = true
+verify_jwt = false
 
-# Kiểm DNS tên miền riêng; hàm tự đọc bằng quyền người gọi (RLS) rồi ghi bằng service role.
+# Kiểm DNS tên miền riêng; hàm tự getUser, đọc bằng quyền người gọi (RLS) rồi ghi bằng secret key.
 [functions.verify-domain]
 enabled = true
-verify_jwt = true
+verify_jwt = false
 
 # Send SMS Hook HTTP (production). Supabase Auth gọi không kèm JWT người dùng mà ký
 # Standard Webhooks; hàm tự kiểm chữ ký bằng SEND_SMS_HOOK_SECRET.
@@ -406,10 +409,15 @@ verify_jwt = true
 enabled = true
 verify_jwt = false
 
-# Xuất báo cáo Excel; mọi truy vấn chạy bằng JWT người gọi (RPC tự kiểm chi nhánh + vai trò).
+# Xuất báo cáo Excel; hàm tự getUser, mọi truy vấn chạy bằng JWT người gọi (RPC tự kiểm chi nhánh + vai trò).
 [functions.export-report]
 enabled = true
-verify_jwt = true
+verify_jwt = false
+
+# Xử lý domain_events (Zalo/Telegram…). Chỉ nhận request mang đúng secret key (hàm tự kiểm).
+[functions.process-domain-events]
+enabled = true
+verify_jwt = false
 
 [analytics]
 enabled = true

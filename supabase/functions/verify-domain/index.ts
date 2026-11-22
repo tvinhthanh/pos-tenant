@@ -5,15 +5,15 @@
 //   2. <domain> trỏ về nền tảng: CNAME = PLATFORM_DOMAIN, hoặc bản ghi A trùng A của PLATFORM_DOMAIN
 // Chỉ khi active thì /api/tls-ask mới cho Caddy xin chứng chỉ và proxy mới phục vụ website.
 //
-// Env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_ANON_KEY (Supabase tự cấp)
+// Env: SUPABASE_URL + key (xem _shared/keys.ts)
 //      PLATFORM_DOMAIN — tên miền nền tảng, VD example.vn
 //      PLATFORM_IPS    — (tùy chọn) IP máy chủ, phẩy ngăn cách, khi PLATFORM_DOMAIN không phân giải được A
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.111.0'
 
-const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!
+import { publishableKey as anonKey, requireKeys, secretKey as serviceRoleKey, supabaseUrl } from '../_shared/keys.ts'
+
+requireKeys({ publishable: true, secret: true })
 const platform = (Deno.env.get('PLATFORM_DOMAIN') ?? '').toLowerCase()
 const platformIps = (Deno.env.get('PLATFORM_IPS') ?? '').split(',').map((s) => s.trim()).filter(Boolean)
 
@@ -41,6 +41,9 @@ Deno.serve(async (req) => {
 
   const auth = req.headers.get('Authorization') ?? ''
   if (!auth.startsWith('Bearer ')) return json({ detail: 'Chưa đăng nhập.' }, 401)
+  // verify_jwt = false (key mới không phải JWT) → tự xác thực phiên người gọi
+  const { data: who, error: whoError } = await admin.auth.getUser(auth.slice('Bearer '.length))
+  if (whoError || !who?.user) return json({ detail: 'Phiên đăng nhập không hợp lệ hoặc đã hết hạn.' }, 401)
   // Đọc bằng quyền của người gọi: RLS chỉ cho thấy tên miền của shop mình
   const userClient = createClient(supabaseUrl, anonKey, {
     auth: { persistSession: false },

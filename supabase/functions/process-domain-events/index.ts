@@ -1,4 +1,5 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.111.0'
+import { requireKeys, secretKey as serviceRoleKey, supabaseUrl } from '../_shared/keys.ts'
 
 type DomainEvent = {
   id: number
@@ -9,12 +10,7 @@ type DomainEvent = {
   attempts: number
 }
 
-const supabaseUrl = Deno.env.get('SUPABASE_URL')
-const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-
-if (!supabaseUrl || !serviceRoleKey) {
-  throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY')
-}
+requireKeys({ secret: true })
 
 const supabase = createClient(supabaseUrl, serviceRoleKey, {
   auth: { persistSession: false },
@@ -63,9 +59,20 @@ async function processEvent(event: DomainEvent): Promise<void> {
   }
 }
 
+// Chỉ máy chủ (pg_net / lịch chạy) được gọi: phải gửi đúng secret key, qua header
+// apikey hoặc Authorization: Bearer. verify_jwt = false vì key mới không phải JWT.
+function isTrustedCaller(request: Request): boolean {
+  const bearer = (request.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '')
+  const apikey = request.headers.get('apikey') ?? ''
+  return !!serviceRoleKey && (bearer === serviceRoleKey || apikey === serviceRoleKey)
+}
+
 Deno.serve(async (request) => {
   if (request.method !== 'POST') {
     return new Response('Method Not Allowed', { status: 405 })
+  }
+  if (!isTrustedCaller(request)) {
+    return new Response('Unauthorized', { status: 401 })
   }
 
   const limit = Math.min(

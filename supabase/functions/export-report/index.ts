@@ -16,11 +16,12 @@
 // Thư viện: SheetJS bản npm 0.18.5 — chỉ dùng để GHI tệp. Các CVE của bản này
 // (CVE-2023-30533, CVE-2024-22363) nằm ở đường ĐỌC tệp, không áp dụng ở đây.
 
-import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
+import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.111.0'
 import * as XLSX from 'npm:xlsx@0.18.5'
 
-const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!
+import { publishableKey as anonKey, requireKeys, supabaseUrl } from '../_shared/keys.ts'
+
+requireKeys({ publishable: true })
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',

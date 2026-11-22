@@ -9,16 +9,12 @@
 // Hạn mức: chặn khi số user đang hoạt động của tổ chức vượt plan.max_users
 // (docs/01 §11.3).
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.111.0'
+import { publishableKey as anonKey, requireKeys, secretKey as serviceRoleKey, supabaseUrl } from '../_shared/keys.ts'
 
-const supabaseUrl = Deno.env.get('SUPABASE_URL')
-const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-const anonKey = Deno.env.get('SUPABASE_ANON_KEY')
 const internalEmailDomain = Deno.env.get('INTERNAL_EMAIL_DOMAIN') ?? 'pos.local'
 
-if (!supabaseUrl || !serviceRoleKey || !anonKey) {
-  throw new Error('Missing SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY')
-}
+requireKeys({ publishable: true, secret: true })
 
 const admin = createClient(supabaseUrl, serviceRoleKey, {
   auth: { persistSession: false },

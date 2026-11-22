@@ -7,6 +7,8 @@ import {
   Activity, Phone, MapPin, AlertCircle, CheckCircle2, 
   Lock, Unlock, ShieldAlert, Store, Key
 } from "lucide-react";
+import { DatePicker } from "@/components/DatePicker";
+import { toYmd } from "@/utils/date";
 import api from "@/utils/api";
 import { toast } from "@/components/Toaster";
 
@@ -494,12 +496,11 @@ export default function SuperadminStoresPage() {
                   </div>
                   <div>
                     <label className="text-slate-400 font-semibold mb-1.5 block">Hạn Sử Dụng</label>
-                    <input
-                      type="date"
-                      className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white focus:outline-none focus:border-indigo-500"
-                      value={createForm.subscription_expires_at}
-                      onChange={(e) => setCreateForm({ ...createForm, subscription_expires_at: e.target.value })}
+                    <DatePicker
                       required
+                      min={toYmd(new Date())}
+                      value={createForm.subscription_expires_at}
+                      onChange={(v) => setCreateForm({ ...createForm, subscription_expires_at: v })}
                     />
                   </div>
                 </div>
@@ -597,13 +598,12 @@ export default function SuperadminStoresPage() {
                 </div>
                 <div>
                   <label className="text-slate-400 font-semibold mb-1.5 block">Hạn Thuê Bao Mới</label>
-                  <input
-                    type="date"
-                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white focus:outline-none focus:border-indigo-500"
-                    value={editForm.subscription_expires_at}
-                    onChange={(e) => setEditForm({ ...editForm, subscription_expires_at: e.target.value })}
-                    required
-                  />
+                  <DatePicker
+                      required
+                      min={toYmd(new Date())}
+                      value={editForm.subscription_expires_at}
+                      onChange={(v) => setEditForm({ ...editForm, subscription_expires_at: v })}
+                    />
                 </div>
               </div>
 

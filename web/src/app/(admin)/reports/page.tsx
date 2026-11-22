@@ -9,7 +9,8 @@ import RevenueForecast from "@/components/RevenueForecast";
 import { toast } from "@/components/Toaster";
 import { exportReportExcel } from "@/utils/fnb";
 import { ShieldCheck, FileSpreadsheet } from "lucide-react";
-import DateRangePicker from "@/components/DateRangePicker";
+import { DateRangePicker } from "@/components/DatePicker";
+import { quickRanges, startOfMonth, toYmd } from "@/utils/date";
 
 /** Một năm trong chi tiết thuế hộ kinh doanh (get_financial_report.tax.years). */
 type TaxYear = {
@@ -23,32 +24,9 @@ type TaxYear = {
 };
 
 
-// toISOString() đổi sang UTC nên ở múi giờ +07 sẽ lùi 1 ngày với mốc nửa đêm.
-// Ngày mặc định của bộ lọc phải là ngày địa phương.
-const toDateInput = (date: Date) =>
-  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-
-/** Các khoảng ngày chọn nhanh (theo giờ máy, tức giờ VN tại quán). */
-function quickRanges() {
-  const today = new Date();
-  const shift = (days: number) => { const d = new Date(today); d.setDate(d.getDate() + days); return d; };
-  const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-  const firstOfLastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-  const lastOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
-  return [
-    { label: "Hôm nay", from: toDateInput(today), to: toDateInput(today) },
-    { label: "Hôm qua", from: toDateInput(shift(-1)), to: toDateInput(shift(-1)) },
-    { label: "7 ngày", from: toDateInput(shift(-6)), to: toDateInput(today) },
-    { label: "Tháng này", from: toDateInput(firstOfMonth), to: toDateInput(today) },
-    { label: "Tháng trước", from: toDateInput(firstOfLastMonth), to: toDateInput(lastOfLastMonth) },
-  ];
-}
-
 export default function Reports() {
-  const [startDate, setStartDate] = useState(
-    toDateInput(new Date(new Date().getFullYear(), new Date().getMonth(), 1))
-  );
-  const [endDate, setEndDate] = useState(toDateInput(new Date()));
+  const [startDate, setStartDate] = useState(() => toYmd(startOfMonth(new Date())));
+  const [endDate, setEndDate] = useState(() => toYmd(new Date()));
   const [exporting, setExporting] = useState(false);
 
   const handleExport = async () => {
@@ -114,6 +92,8 @@ export default function Reports() {
               <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 p-1.5 rounded-xl text-xs">
                 <div className="min-w-0 flex-1">
                   <DateRangePicker
+                    variant="inline"
+                    align="right"
                     from={startDate}
                     to={endDate}
                     presets={quickRanges()}

@@ -7,7 +7,7 @@ import { usePathname } from "next/navigation";
 import api, { supabase } from "@/utils/api";
 import { markUnlocked } from "@/utils/pinLock";
 
-const PUBLIC_PATHS = new Set<string>(["/signup"]);
+const PUBLIC_PATHS = new Set<string>(["/signup", "/forgot-password", "/reset-password"]);
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -165,7 +165,10 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
             </div>
 
             <div>
-              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-400">Mật khẩu</label>
+              <div className="mb-1.5 flex items-center justify-between">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400">Mật khẩu</label>
+                <a href="/forgot-password" className="text-xs font-semibold text-indigo-400 hover:text-indigo-300">Quên mật khẩu?</a>
+              </div>
               <div className="relative">
                 <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-slate-500">
                   <Lock className="h-4 w-4" />

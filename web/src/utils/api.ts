@@ -8,7 +8,7 @@ import {
 } from "@/utils/shop";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+import { SUPABASE_PUBLISHABLE_KEY } from "@/utils/supabaseKeys";
 const INTERNAL_EMAIL_DOMAIN = process.env.NEXT_PUBLIC_INTERNAL_EMAIL_DOMAIN || "pos.local";
 const LOGIN_EMAIL_ALIASES: Record<string, string> = {
   admin: process.env.NEXT_PUBLIC_ADMIN_EMAIL || process.env.NEXT_PUBLIC_SUPERADMIN_EMAIL || "superadmin@pos.local",
@@ -26,11 +26,11 @@ function getSupabase(): SupabaseClient {
     throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL. Set it in Vercel Environment Variables and redeploy.");
   }
 
-  if (!SUPABASE_ANON_KEY) {
-    throw new Error("Missing NEXT_PUBLIC_SUPABASE_ANON_KEY. Set it in Vercel Environment Variables and redeploy.");
+  if (!SUPABASE_PUBLISHABLE_KEY) {
+    throw new Error("Missing NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY. Set it in Vercel Environment Variables and redeploy.");
   }
 
-  supabaseClient ??= createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  supabaseClient ??= createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     auth: {
       persistSession: true,
       autoRefreshToken: true,

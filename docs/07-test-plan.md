@@ -52,7 +52,7 @@
 | Local | `supabase start` → `supabase db reset` → `psql … -f supabase/seed.local.sql` → `cd web && npm run dev` | Toàn bộ plan |
 | Staging (linked) | `supabase db push`, deploy functions, web Docker + Caddy | Smoke + §8.5 tên miền/TLS + go-live |
 
-Biến môi trường cần kiểm: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (publishable), `NEXT_PUBLIC_PLATFORM_DOMAIN`, `NEXT_PUBLIC_INTERNAL_EMAIL_DOMAIN`. **Custom Access Token hook phải bật** — thiếu hook thì owner không đọc được gì (xem 06).
+Biến môi trường cần kiểm: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` , `NEXT_PUBLIC_PLATFORM_DOMAIN`, `NEXT_PUBLIC_INTERNAL_EMAIL_DOMAIN`. **Custom Access Token hook phải bật** — thiếu hook thì owner không đọc được gì (xem 06).
 
 ### 4.2 Tài khoản
 

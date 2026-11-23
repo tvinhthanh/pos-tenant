@@ -1,19 +1,19 @@
 /**
- * Đọc website công khai ở phía server (SSR). Chỉ gọi RPC công khai bằng anon key —
+ * Đọc website công khai ở phía server (SSR). Chỉ gọi RPC công khai bằng publishable key —
  * anon không đọc thẳng bảng nào (docs/website-design.md, W1).
  */
 import { headers } from "next/headers";
 import type { CatalogItem, PublicPage, PublicPost, PublicPostSummary, PublicSite } from "@/utils/site";
+import { publicRestHeaders } from "@/utils/supabaseKeys";
 
 // Trong Docker, Next gọi Supabase qua mạng nội bộ (SUPABASE_INTERNAL_URL); ở máy dev dùng URL công khai.
 const SUPABASE_URL = process.env.SUPABASE_INTERNAL_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 export const PLATFORM_DOMAIN = (process.env.NEXT_PUBLIC_PLATFORM_DOMAIN || "").toLowerCase();
 
 async function rpc<T>(fn: string, args: Record<string, unknown>, revalidate = 30): Promise<T | null> {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
     method: "POST",
-    headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}`, "Content-Type": "application/json" },
+    headers: publicRestHeaders(),
     body: JSON.stringify(args),
     // Xuất bản xong tối đa `revalidate` giây sau khách thấy bản mới
     next: { revalidate },

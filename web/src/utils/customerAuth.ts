@@ -5,12 +5,13 @@
  * trong app quản trị cũng không lẫn phiên.
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { SUPABASE_PUBLISHABLE_KEY } from "@/utils/supabaseKeys";
 
 let client: SupabaseClient | null = null;
 
 export function customerClient(): SupabaseClient {
   if (!client) {
-    client = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL || "", process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "", {
+    client = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL || "", SUPABASE_PUBLISHABLE_KEY, {
       auth: { storageKey: "pos-customer-auth", persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
     });
   }

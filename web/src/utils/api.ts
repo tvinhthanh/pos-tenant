@@ -330,6 +330,54 @@ export async function selfSignup(payload: {
   return data as { user_id: string; branch_id: number; email_confirmation_required: boolean };
 }
 
+export const MIN_PASSWORD_LENGTH = 10;
+
+/**
+ * Quên mật khẩu: Supabase Auth gửi mail chứa link về /reset-password.
+ * Chỉ nhận email thật — tài khoản nhân viên dùng email nội bộ (@pos.local) không nhận
+ * được mail, chủ quán đặt lại mật khẩu cho họ trong Nhân viên.
+ * Supabase trả thành công cả khi email không tồn tại (không lộ tài khoản có thật).
+ */
+export async function requestPasswordReset(email: string): Promise<void> {
+  const value = email.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+    throwApiError("Nhập email đã dùng để đăng ký tài khoản.");
+  }
+  if (value.endsWith(`@${INTERNAL_EMAIL_DOMAIN}`)) {
+    throwApiError("Tài khoản nhân viên không có email nhận thư. Nhờ chủ quán đặt lại mật khẩu trong mục Nhân viên.");
+  }
+  const { error } = await getSupabase().auth.resetPasswordForEmail(value, {
+    redirectTo: `${window.location.origin}/reset-password`,
+  });
+  if (!error) return;
+  if (String(error.code || "").startsWith("over_") || error.status === 429) {
+    throwApiError("Đã gửi quá nhiều email. Vui lòng thử lại sau ít phút.", 429);
+  }
+  if (!error.status || error.name === "AuthRetryableFetchError") {
+    throwApiError("Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại.");
+  }
+  throwApiError("Không gửi được email đặt lại mật khẩu. Vui lòng thử lại.");
+}
+
+/** Đặt mật khẩu mới cho phiên đang mở từ link khôi phục; trả access token để đăng nhập luôn. */
+export async function updatePassword(password: string): Promise<string> {
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    throwApiError(`Mật khẩu cần ít nhất ${MIN_PASSWORD_LENGTH} ký tự.`);
+  }
+  const { error } = await getSupabase().auth.updateUser({ password });
+  if (error) {
+    const code = String(error.code || "");
+    if (code === "same_password") throwApiError("Mật khẩu mới phải khác mật khẩu cũ.");
+    if (code === "weak_password") throwApiError("Mật khẩu quá yếu. Thêm chữ hoa, số hoặc ký tự đặc biệt.");
+    if (code === "session_not_found" || code === "bad_jwt" || error.status === 401) {
+      throwApiError("Link đặt lại mật khẩu đã hết hạn. Gửi lại email mới.");
+    }
+    throwApiError("Không đổi được mật khẩu. Vui lòng thử lại.");
+  }
+  const { data } = await getSupabase().auth.getSession();
+  return data.session?.access_token || "";
+}
+
 export async function activeContext() {
   const profile = await requireProfile();
   const branchId = profile.branch_id;

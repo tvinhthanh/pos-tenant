@@ -17,7 +17,7 @@ type CurrentUser = {
   full_name?: string | null;
 };
 
-const PUBLIC_PATHS = new Set<string>(["/signup"]);
+const PUBLIC_PATHS = new Set<string>(["/signup", "/forgot-password", "/reset-password"]);
 const SUPERADMIN_PREFIX = "/superadmin";
 
 export default function RoleLayout({ children }: { children: React.ReactNode }) {

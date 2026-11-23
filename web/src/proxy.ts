@@ -7,10 +7,10 @@
  * Kết quả tra tên miền riêng cache trong bộ nhớ 60 giây.
  */
 import { NextResponse, type NextRequest } from "next/server";
+import { publicRestHeaders } from "@/utils/supabaseKeys";
 
 const PLATFORM = (process.env.NEXT_PUBLIC_PLATFORM_DOMAIN || "").toLowerCase();
 const SUPABASE_URL = process.env.SUPABASE_INTERNAL_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 // Subdomain dành cho hệ thống, không bao giờ là shop (khớp app.is_valid_subdomain)
 const SYSTEM_SUBS = new Set(["app", "www", "api", "admin"]);
 
@@ -23,7 +23,7 @@ async function shopForDomain(host: string): Promise<string | null> {
   try {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/site_resolve_domain`, {
       method: "POST",
-      headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}`, "Content-Type": "application/json" },
+      headers: publicRestHeaders(),
       body: JSON.stringify({ p_host: host }),
     });
     if (res.ok) shop = (await res.json()) || null;

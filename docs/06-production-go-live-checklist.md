@@ -5,7 +5,7 @@ Use this as the release gate before putting real customer data into the system.
 ## Web environment
 
 - `NEXT_PUBLIC_SUPABASE_URL` points to the production Supabase project URL.
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY` uses the production publishable/anon key only.
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` uses the production publishable key (`sb_publishable_…`) only.
 - `NEXT_PUBLIC_INTERNAL_EMAIL_DOMAIN` is set if username aliases are used.
 - Screen lock uses a per-account PIN (migration `20261111000600_user_pins.sql`); the old shared `NEXT_PUBLIC_ADMIN_PIN` is gone and can be removed from Vercel env.
 - No `DATABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, or reset-password helper is exposed to the web container.
